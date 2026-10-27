@@ -12,21 +12,14 @@ import { invoiceFields, invoiceOperations } from './descriptions/InvoiceDescript
 import { reportFields } from './descriptions/ReportDescription';
 import { trendFields } from './descriptions/TrendDescription';
 import { getTemplates } from './methods/getTemplates';
-import { getTemplateFields } from './methods/getTemplateFields';
 import { apiRequest } from './helpers/request';
 import { groupRows } from './helpers/groupRows';
 import {
 	buildInvoiceFields,
-	type HeaderFieldMapping,
-	type LineItemColumnConfig,
 	type TemplateFieldItem,
 } from './helpers/buildInvoiceFields';
 import { fetchGoogleSheetData } from './helpers/googleSheets';
 import { formatApiError } from './helpers/errors';
-
-interface RawFieldMappings {
-	mappings?: HeaderFieldMapping[];
-}
 
 interface TemplateFieldsResponse {
 	fields?: TemplateFieldItem[];
@@ -78,7 +71,6 @@ export class InvoicingBuilder implements INodeType {
 	methods = {
 		loadOptions: {
 			getTemplates,
-			getTemplateFields,
 		},
 	};
 
@@ -92,14 +84,9 @@ export class InvoicingBuilder implements INodeType {
 				if (operation === 'create') {
 					const spreadsheet = this.getNodeParameter('spreadsheet', 0) as string;
 					const worksheet = this.getNodeParameter('worksheet', 0, 'Sheet1') as string;
-					const googleAuthType = this.getNodeParameter('googleAuthType', 0, 'public') as string;
-					const googleApiKey = this.getNodeParameter('googleApiKey', 0, '') as string;
 					const templateId = this.getNodeParameter('templateId', 0) as string;
 					const format = this.getNodeParameter('format', 0, 'pdf') as string;
-					const groupBy = this.getNodeParameter('groupBy', 0, '') as string;
-					const externalIdColumn = this.getNodeParameter('externalIdColumn', 0, '') as string;
-					const saveToHistory = this.getNodeParameter('saveToHistory', 0, true) as boolean;
-					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', 0, 'data') as string;
+					const sendToClient = this.getNodeParameter('sendToClient', 0, false) as boolean;
 
 					// Validate format
 					if (format !== 'pdf' && format !== 'png') {
@@ -113,57 +100,11 @@ export class InvoicingBuilder implements INodeType {
 					const sheetData = await fetchGoogleSheetData.call(this, {
 						spreadsheet,
 						worksheet,
-						googleAuthType,
-						googleApiKey,
+						googleAuthType: 'public',
+						googleApiKey: '',
 					});
 
-					const { headers, rows, spreadsheetId, worksheet: resolvedWorksheet } = sheetData;
-
-					// Extract header mappings
-					let headerMappings: HeaderFieldMapping[] = [];
-					const rawMappings = this.getNodeParameter(
-						'headerFieldMappings',
-						0,
-						{},
-					) as RawFieldMappings | HeaderFieldMapping[];
-
-					if (rawMappings && typeof rawMappings === 'object' && 'mappings' in rawMappings && Array.isArray(rawMappings.mappings)) {
-						headerMappings = rawMappings.mappings;
-					} else if (Array.isArray(rawMappings)) {
-						headerMappings = rawMappings;
-					}
-
-					// Extract line item columns
-					const lineItemColumns = this.getNodeParameter(
-						'lineItemColumns',
-						0,
-						{},
-					) as LineItemColumnConfig;
-
-					// Validate mapped columns exist in spreadsheet headers
-					const columnsToCheck: string[] = [];
-					for (const mapping of headerMappings) {
-						if (mapping.column && mapping.column.trim()) {
-							columnsToCheck.push(mapping.column.trim());
-						}
-					}
-					if (lineItemColumns.description?.trim()) columnsToCheck.push(lineItemColumns.description.trim());
-					if (lineItemColumns.quantity?.trim()) columnsToCheck.push(lineItemColumns.quantity.trim());
-					if (lineItemColumns.rate?.trim()) columnsToCheck.push(lineItemColumns.rate.trim());
-					if (lineItemColumns.tax?.trim()) columnsToCheck.push(lineItemColumns.tax.trim());
-					if (externalIdColumn?.trim()) columnsToCheck.push(externalIdColumn.trim());
-					if (groupBy?.trim()) columnsToCheck.push(groupBy.trim());
-
-					if (columnsToCheck.length > 0 && headers.length > 0) {
-						const missingColumns = columnsToCheck.filter((col) => !headers.includes(col));
-
-						if (missingColumns.length > 0) {
-							throw new NodeOperationError(
-								this.getNode(),
-								`The following mapped column(s) were not found in the spreadsheet headers: ${missingColumns.join(', ')}. Available headers: ${headers.join(', ')}`,
-							);
-						}
-					}
+					const { rows, spreadsheetId, worksheet: resolvedWorksheet } = sheetData;
 
 					// 2. Select an Invoice Template & Retrieve Template Fields
 					const fieldsResponse = (await apiRequest.call(
@@ -179,26 +120,7 @@ export class InvoicingBuilder implements INodeType {
 					const tableFieldId = tableField?.id;
 
 					// 3. Group rows
-					let invoiceNumColFromMappings: string | undefined;
-					for (const mapping of headerMappings) {
-						const tf = templateFields.find((f) => f.id === mapping.fieldId);
-						if (
-							tf &&
-							(tf.type === 'invoiceNumber' ||
-								tf.type === 'invoiceLabel' ||
-								tf.label?.toLowerCase().includes('invoice'))
-						) {
-							invoiceNumColFromMappings = mapping.column;
-							break;
-						}
-					}
-
-					const resolvedGroupBy =
-						groupBy?.trim() ||
-						externalIdColumn?.trim() ||
-						invoiceNumColFromMappings?.trim();
-
-					const groups = groupRows(rows, resolvedGroupBy);
+					const groups = groupRows(rows);
 
 					if (groups.length === 0) {
 						throw new NodeOperationError(
@@ -216,9 +138,6 @@ export class InvoicingBuilder implements INodeType {
 							rowGroup: g,
 							templateId,
 							format: format as 'pdf' | 'png',
-							headerMappings,
-							lineItemColumns,
-							externalIdColumn,
 							tableFieldId,
 							templateFields,
 						}),
@@ -226,7 +145,8 @@ export class InvoicingBuilder implements INodeType {
 
 					const requestBody = {
 						invoices,
-						saveToHistory,
+						saveToHistory: true,
+						sendToClient,
 					};
 
 					// 5. Submit invoice creation to NestJS backend
@@ -287,6 +207,17 @@ export class InvoicingBuilder implements INodeType {
 						jsonOutput.invoiceIds = invoiceIds;
 					}
 
+					if (sendToClient) {
+						jsonOutput.sendToClient = true;
+						const emailedHeader = response.headers?.['x-invoices-emailed'];
+						if (emailedHeader) {
+							jsonOutput.emailedTo = emailedHeader
+								.split(',')
+								.map((e: string) => e.trim())
+								.filter(Boolean);
+						}
+					}
+
 					const pairedItem =
 						items.length > 0 ? items.map((_, i) => ({ item: i })) : [{ item: 0 }];
 
@@ -295,7 +226,7 @@ export class InvoicingBuilder implements INodeType {
 							{
 								json: jsonOutput,
 								binary: {
-									[binaryPropertyName]: binaryData,
+									data: binaryData,
 								},
 								pairedItem,
 							},

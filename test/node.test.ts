@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InvoicingBuilder } from '../nodes/InvoicingBuilder/InvoicingBuilder.node';
+import { invoiceFields } from '../nodes/InvoicingBuilder/descriptions/InvoiceDescription';
 import {
 	type IDataObject,
 	type IExecuteFunctions,
@@ -37,16 +38,9 @@ function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFun
 		operation: 'create',
 		spreadsheet: 'https://docs.google.com/spreadsheets/d/test_sheet_123/edit#gid=0',
 		worksheet: 'Sheet1',
-		googleAuthType: 'public',
-		googleApiKey: '',
 		templateId: 'tmpl_123',
 		format: 'pdf',
-		groupBy: '',
-		externalIdColumn: '',
-		saveToHistory: true,
-		binaryPropertyName: 'data',
-		headerFieldMappings: {},
-		lineItemColumns: {},
+		sendToClient: false,
 		...options.parameters,
 	};
 
@@ -163,19 +157,6 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 			sheetCsvData: `"Customer Name","Customer Email","Item","Quantity","Rate"
 "XYZ Company","xyz@example.com","Monitor",1,200
 `,
-			parameters: {
-				headerFieldMappings: {
-					mappings: [
-						{ fieldId: 'comp_billto', column: 'Customer Name' },
-						{ fieldId: 'comp_email', column: 'Customer Email' },
-					],
-				},
-				lineItemColumns: {
-					description: 'Item',
-					quantity: 'Quantity',
-					rate: 'Rate',
-				},
-			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
 					return {
@@ -242,12 +223,6 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 "Web Design",2,1500,3000,"Acme Corp","2026-10-27"
 "Hosting",1,200,200,"Acme Corp","2026-10-27"
 `,
-			parameters: {
-				// User only provided spreadsheet and templateId, no manual mappings
-				headerFieldMappings: {},
-				lineItemColumns: {},
-				groupBy: '',
-			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
 					return {
@@ -309,28 +284,81 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 		);
 	});
 
-	it('validates missing mapped columns against spreadsheet headers before calling create API', async () => {
-		const createSpy = vi.fn();
+	it('only exposes allowed create invoice properties in description', () => {
+		const createFields = invoiceFields.filter((f) => {
+			const ops = f.displayOptions?.show?.operation as string[] | undefined;
+			return ops?.includes('create');
+		});
+		const fieldNames = createFields.map((f) => f.name);
+		expect(fieldNames).toEqual([
+			'spreadsheet',
+			'worksheet',
+			'templateId',
+			'format',
+			'sendToClient',
+		]);
+
+		const unwanted = [
+			'googleAuthType',
+			'googleApiKey',
+			'groupBy',
+			'headerFieldMappings',
+			'lineItemColumns',
+			'externalIdColumn',
+			'saveToHistory',
+			'binaryPropertyName',
+		];
+		for (const name of unwanted) {
+			expect(fieldNames).not.toContain(name);
+		}
+	});
+
+	it('supports sendToClient toggle: passes flag to backend and extracts clientEmail and clientName from spreadsheet', async () => {
+		let capturedCreateBody: {
+			invoices: Array<{
+				clientEmail?: string;
+				clientName?: string;
+				fields: { tbl_id: unknown[] };
+			}>;
+			sendToClient?: boolean;
+		} | null = null;
+
 		const context = createMockExecuteContext({
-			sheetCsvData: `"ValidCol1","ValidCol2"\n"val1","val2"\n`,
+			sheetCsvData: `"Client Name","Client Email","Item","Quantity","Rate"
+"Acme Inc","billing@acme.com","Consulting",5,100
+`,
 			parameters: {
-				headerFieldMappings: {
-					mappings: [{ fieldId: 'comp_billto', column: 'NonExistentColumn' }],
-				},
+				sendToClient: true,
 			},
 			httpHandler: async (opts) => {
-				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					createSpy();
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return { fields: [{ id: 'tbl_id', type: 'table' }] };
 				}
-				return `"ValidCol1","ValidCol2"\n"val1","val2"\n`;
+				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
+					return {
+						statusCode: 200,
+						headers: {
+							'x-invoice-count': '1',
+							'x-invoice-ids': 'inv_email_1',
+							'x-invoices-emailed': 'billing@acme.com',
+						},
+						body: Buffer.from('%PDF-1.4 emailed invoice'),
+					};
+				}
+				return `"Client Name","Client Email","Item","Quantity","Rate"\n"Acme Inc","billing@acme.com","Consulting",5,100\n`;
 			},
 		});
 
-		await expect(node.execute.call(context)).rejects.toThrow(NodeOperationError);
-		await expect(node.execute.call(context)).rejects.toThrow(
-			'The following mapped column(s) were not found in the spreadsheet headers: NonExistentColumn',
-		);
-		expect(createSpy).not.toHaveBeenCalled();
+		const result = await node.execute.call(context);
+		expect(result[0][0].json.success).toBe(true);
+		expect(result[0][0].json.sendToClient).toBe(true);
+		expect(result[0][0].json.emailedTo).toEqual(['billing@acme.com']);
+
+		expect(capturedCreateBody).not.toBeNull();
+		expect(capturedCreateBody!.sendToClient).toBe(true);
+		expect(capturedCreateBody!.invoices[0].clientEmail).toBe('billing@acme.com');
+		expect(capturedCreateBody!.invoices[0].clientName).toBe('Acme Inc');
 	});
 
 	it('groups rows into 2 invoices and creates zip archive', async () => {
@@ -339,9 +367,6 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 "INV-1","Acme Corp","Monitor",1,200
 "INV-2","Beta LLC","Laptop",1,1000
 `,
-			parameters: {
-				groupBy: 'OrderId',
-			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
 					return { fields: [{ id: 'tbl_id', type: 'table' }] };
@@ -375,10 +400,6 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 "INV-2","Item 2",200
 "INV-3","Item 3",300
 `,
-			parameters: {
-				groupBy: 'OrderId',
-				externalIdColumn: 'OrderId',
-			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
 					return { fields: [{ id: 'tbl_id', type: 'table' }] };
@@ -412,7 +433,7 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 
 	it('calculates invoice count based on invoice data, not on row or column numbers', async () => {
 		let capturedCreateBody: { invoices: Array<{ fields: { tbl_id: unknown[] } }> } | null = null;
-		// 5 rows in spreadsheet, but no groupBy => exactly 1 invoice with 5 line items (not 5 invoices)
+		// 5 rows in spreadsheet, but no identifier column => exactly 1 invoice with 5 line items (not 5 invoices)
 		const context = createMockExecuteContext({
 			sheetCsvData: `"Item","Quantity","Rate"
 "Item A",1,10
@@ -421,14 +442,6 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 "Item D",3,40
 "Item E",1,50
 `,
-			parameters: {
-				groupBy: '',
-				lineItemColumns: {
-					description: 'Item',
-					quantity: 'Quantity',
-					rate: 'Rate',
-				},
-			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
 					return { fields: [{ id: 'tbl_id', type: 'table' }] };
@@ -459,7 +472,7 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 		expect(capturedCreateBody!.invoices[0].fields.tbl_id).toHaveLength(5);
 	});
 
-	it('auto-detects invoice groups from data and keeps line items separate when groupBy is empty', async () => {
+	it('auto-detects invoice groups from data and keeps line items separate', async () => {
 		let capturedCreateBody: {
 			invoices: Array<{
 				externalId?: string;
@@ -474,9 +487,6 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 "INV-102","Beta LLC","Laptop",1000
 "INV-102","Beta LLC","Keyboard",75
 `,
-			parameters: {
-				groupBy: '', // user did not specify groupBy
-			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
 					return { fields: [{ id: 'tbl_id', type: 'table' }] };

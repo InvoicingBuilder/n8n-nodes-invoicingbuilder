@@ -25,7 +25,7 @@ export interface BuildInvoiceFieldsOptions {
 	};
 	templateId: string;
 	format: 'pdf' | 'png';
-	headerMappings: HeaderFieldMapping[];
+	headerMappings?: HeaderFieldMapping[];
 	lineItemColumns?: LineItemColumnConfig;
 	externalIdColumn?: string;
 	tableFieldId?: string;
@@ -36,6 +36,8 @@ export interface BuiltInvoiceItem {
 	templateId: string;
 	format: 'pdf' | 'png';
 	externalId?: string;
+	clientEmail?: string;
+	clientName?: string;
 	fields: Record<string, unknown>;
 }
 
@@ -92,7 +94,7 @@ export function buildInvoiceFields(options: BuildInvoiceFieldsOptions): BuiltInv
 		rowGroup,
 		templateId,
 		format,
-		headerMappings,
+		headerMappings = [],
 		lineItemColumns,
 		externalIdColumn,
 		tableFieldId,
@@ -243,7 +245,10 @@ export function buildInvoiceFields(options: BuildInvoiceFieldsOptions): BuiltInv
 				candidates.push('amountpaid', 'paidamount', 'paid', 'deposit');
 				break;
 			default:
-				if (tf.label && tf.label.toLowerCase().includes('email')) {
+				if (
+					(tf.label && tf.label.toLowerCase().includes('email')) ||
+					(tf.id && tf.id.toLowerCase().includes('email'))
+				) {
 					candidates.push('customeremail', 'clientemail', 'email', 'billingemail');
 				}
 				break;
@@ -383,6 +388,50 @@ export function buildInvoiceFields(options: BuildInvoiceFieldsOptions): BuiltInv
 		}
 	}
 
+	// 6. Detect clientEmail and clientName from spreadsheet columns
+	let clientEmail: string | undefined;
+	const clientEmailCol = findMatchingColumn(headers, [
+		'clientemail',
+		'customeremail',
+		'email',
+		'clientmail',
+		'billingemail',
+		'billtoemail',
+	]);
+	if (
+		clientEmailCol &&
+		firstRow[clientEmailCol] !== undefined &&
+		firstRow[clientEmailCol] !== null
+	) {
+		const emailVal = String(firstRow[clientEmailCol]).trim();
+		if (emailVal.length > 0) {
+			clientEmail = emailVal;
+		}
+	}
+
+	let clientName: string | undefined;
+	const clientNameCol = findMatchingColumn(headers, [
+		'clientname',
+		'customername',
+		'client',
+		'customer',
+		'billto',
+		'billedto',
+		'recipient',
+		'company',
+		'companyname',
+	]);
+	if (
+		clientNameCol &&
+		firstRow[clientNameCol] !== undefined &&
+		firstRow[clientNameCol] !== null
+	) {
+		const nameVal = String(firstRow[clientNameCol]).trim();
+		if (nameVal.length > 0) {
+			clientName = nameVal;
+		}
+	}
+
 	const invoice: BuiltInvoiceItem = {
 		templateId,
 		format,
@@ -391,6 +440,12 @@ export function buildInvoiceFields(options: BuildInvoiceFieldsOptions): BuiltInv
 
 	if (externalId) {
 		invoice.externalId = externalId;
+	}
+	if (clientEmail) {
+		invoice.clientEmail = clientEmail;
+	}
+	if (clientName) {
+		invoice.clientName = clientName;
 	}
 
 	return invoice;
