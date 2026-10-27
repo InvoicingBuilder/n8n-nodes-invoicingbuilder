@@ -19,7 +19,9 @@ import {
 	buildInvoiceFields,
 	type HeaderFieldMapping,
 	type LineItemColumnConfig,
+	type TemplateFieldItem,
 } from './helpers/buildInvoiceFields';
+import { fetchGoogleSheetData } from './helpers/googleSheets';
 import { formatApiError } from './helpers/errors';
 
 interface RawFieldMappings {
@@ -27,10 +29,7 @@ interface RawFieldMappings {
 }
 
 interface TemplateFieldsResponse {
-	fields?: Array<{
-		id: string;
-		type: string;
-	}>;
+	fields?: TemplateFieldItem[];
 }
 
 interface CreateApiResponse {
@@ -91,6 +90,10 @@ export class InvoicingBuilder implements INodeType {
 		try {
 			if (resource === 'invoice') {
 				if (operation === 'create') {
+					const spreadsheet = this.getNodeParameter('spreadsheet', 0) as string;
+					const worksheet = this.getNodeParameter('worksheet', 0, 'Sheet1') as string;
+					const googleAuthType = this.getNodeParameter('googleAuthType', 0, 'public') as string;
+					const googleApiKey = this.getNodeParameter('googleApiKey', 0, '') as string;
 					const templateId = this.getNodeParameter('templateId', 0) as string;
 					const format = this.getNodeParameter('format', 0, 'pdf') as string;
 					const groupBy = this.getNodeParameter('groupBy', 0, '') as string;
@@ -105,6 +108,16 @@ export class InvoicingBuilder implements INodeType {
 							'Invalid format. Format must be "pdf" or "png".',
 						);
 					}
+
+					// 1. Retrieve Data from Google Sheets
+					const sheetData = await fetchGoogleSheetData.call(this, {
+						spreadsheet,
+						worksheet,
+						googleAuthType,
+						googleApiKey,
+					});
+
+					const { headers, rows, spreadsheetId, worksheet: resolvedWorksheet } = sheetData;
 
 					// Extract header mappings
 					let headerMappings: HeaderFieldMapping[] = [];
@@ -127,7 +140,7 @@ export class InvoicingBuilder implements INodeType {
 						{},
 					) as LineItemColumnConfig;
 
-					// Validate mapped columns exist in at least one input row
+					// Validate mapped columns exist in spreadsheet headers
 					const columnsToCheck: string[] = [];
 					for (const mapping of headerMappings) {
 						if (mapping.column && mapping.column.trim()) {
@@ -141,38 +154,18 @@ export class InvoicingBuilder implements INodeType {
 					if (externalIdColumn?.trim()) columnsToCheck.push(externalIdColumn.trim());
 					if (groupBy?.trim()) columnsToCheck.push(groupBy.trim());
 
-					if (columnsToCheck.length > 0 && items.length > 0) {
-						const missingColumns = columnsToCheck.filter(
-							(col) => !items.some((item) => item.json && (col in item.json || item.json[col] !== undefined)),
-						);
+					if (columnsToCheck.length > 0 && headers.length > 0) {
+						const missingColumns = columnsToCheck.filter((col) => !headers.includes(col));
 
 						if (missingColumns.length > 0) {
 							throw new NodeOperationError(
 								this.getNode(),
-								`The following mapped column(s) were not found in any input row: ${missingColumns.join(', ')}`,
+								`The following mapped column(s) were not found in the spreadsheet headers: ${missingColumns.join(', ')}. Available headers: ${headers.join(', ')}`,
 							);
 						}
 					}
 
-					// Group rows
-					const rowObjects = items.map((item) => (item.json || {}) as IDataObject);
-					const groups = groupRows(rowObjects, groupBy);
-
-					if (groups.length === 0) {
-						throw new NodeOperationError(
-							this.getNode(),
-							'No rows to turn into invoices',
-						);
-					}
-
-					if (groups.length > 2) {
-						throw new NodeOperationError(
-							this.getNode(),
-							`Found ${groups.length} invoices; the limit is 2 per execution. Split the rows (e.g. with Loop Over Items or Limit) and try again.`,
-						);
-					}
-
-					// Fetch template fields to identify table field ID
+					// 2. Select an Invoice Template & Retrieve Template Fields
 					const fieldsResponse = (await apiRequest.call(
 						this,
 						'GET',
@@ -181,11 +174,44 @@ export class InvoicingBuilder implements INodeType {
 						{ templateId },
 					)) as TemplateFieldsResponse;
 
-					const tableField = fieldsResponse?.fields?.find((f) => f?.type === 'table');
+					const templateFields = fieldsResponse?.fields || [];
+					const tableField = templateFields.find((f) => f?.type === 'table' || f?.type === 'payslipTable');
 					const tableFieldId = tableField?.id;
 
-					// Build invoices
-					const invoices = groups.map((g) =>
+					// 3. Group rows
+					let invoiceNumColFromMappings: string | undefined;
+					for (const mapping of headerMappings) {
+						const tf = templateFields.find((f) => f.id === mapping.fieldId);
+						if (
+							tf &&
+							(tf.type === 'invoiceNumber' ||
+								tf.type === 'invoiceLabel' ||
+								tf.label?.toLowerCase().includes('invoice'))
+						) {
+							invoiceNumColFromMappings = mapping.column;
+							break;
+						}
+					}
+
+					const resolvedGroupBy =
+						groupBy?.trim() ||
+						externalIdColumn?.trim() ||
+						invoiceNumColFromMappings?.trim();
+
+					const groups = groupRows(rows, resolvedGroupBy);
+
+					if (groups.length === 0) {
+						throw new NodeOperationError(
+							this.getNode(),
+							'No rows to turn into invoices',
+						);
+					}
+
+					// If more than 2 invoices found in invoice data, use first 2 and ignore others
+					const groupsToProcess = groups.slice(0, 2);
+
+					// 4. Build invoices with template clearing and spreadsheet population
+					const invoices = groupsToProcess.map((g) =>
 						buildInvoiceFields({
 							rowGroup: g,
 							templateId,
@@ -194,6 +220,7 @@ export class InvoicingBuilder implements INodeType {
 							lineItemColumns,
 							externalIdColumn,
 							tableFieldId,
+							templateFields,
 						}),
 					);
 
@@ -202,6 +229,7 @@ export class InvoicingBuilder implements INodeType {
 						saveToHistory,
 					};
 
+					// 5. Submit invoice creation to NestJS backend
 					const response = (await apiRequest.call(
 						this,
 						'POST',
@@ -251,13 +279,16 @@ export class InvoicingBuilder implements INodeType {
 						invoiceCount,
 						format,
 						fileName,
+						spreadsheetId,
+						worksheet: resolvedWorksheet,
 					};
 
 					if (invoiceIds && invoiceIds.length > 0) {
 						jsonOutput.invoiceIds = invoiceIds;
 					}
 
-					const pairedItem = items.map((_, i) => ({ item: i }));
+					const pairedItem =
+						items.length > 0 ? items.map((_, i) => ({ item: i })) : [{ item: 0 }];
 
 					return [
 						[

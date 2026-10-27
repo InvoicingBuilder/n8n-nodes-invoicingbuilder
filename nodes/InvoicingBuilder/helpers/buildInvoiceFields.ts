@@ -12,6 +12,13 @@ export interface LineItemColumnConfig {
 	tax?: string;
 }
 
+export interface TemplateFieldItem {
+	id: string;
+	type: string;
+	label?: string;
+	value?: unknown;
+}
+
 export interface BuildInvoiceFieldsOptions {
 	rowGroup: {
 		rows: IDataObject[];
@@ -22,6 +29,7 @@ export interface BuildInvoiceFieldsOptions {
 	lineItemColumns?: LineItemColumnConfig;
 	externalIdColumn?: string;
 	tableFieldId?: string;
+	templateFields?: TemplateFieldItem[];
 }
 
 export interface BuiltInvoiceItem {
@@ -36,8 +44,48 @@ function isNilOrEmpty(value: unknown): boolean {
 }
 
 /**
- * Pure function to build the invoice payload from a row group.
- * Pass cell values through as strings exactly as received without reformatting dates or numbers.
+ * Builds the invoice payload from spreadsheet rows.
+ * Clears existing template values prior to populating with new data.
+ * Completely replaces the line-item collection rather than appending.
+ */
+function normalizeKey(str: string): string {
+	return str.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Finds a column in spreadsheet headers matching candidate names/aliases.
+ */
+function findMatchingColumn(headers: string[], candidates: string[]): string | undefined {
+	const normalizedCandidates = candidates.map(normalizeKey);
+
+	// 1. Exact normalized match first (highest priority)
+	for (const cand of normalizedCandidates) {
+		for (const header of headers) {
+			if (normalizeKey(header) === cand) {
+				return header;
+			}
+		}
+	}
+
+	// 2. Substring/prefix match (lower priority)
+	for (const cand of normalizedCandidates) {
+		if (cand.length < 3) continue;
+		for (const header of headers) {
+			const normHeader = normalizeKey(header);
+			if (normHeader.startsWith(cand) || normHeader.endsWith(cand) || normHeader.includes(cand)) {
+				return header;
+			}
+		}
+	}
+
+	return undefined;
+}
+
+/**
+ * Builds the invoice payload from spreadsheet rows.
+ * Clears existing template values prior to populating with new data.
+ * Supports both manual and automatic mapping of headers and line items.
+ * Completely replaces the line-item collection rather than appending.
  */
 export function buildInvoiceFields(options: BuildInvoiceFieldsOptions): BuiltInvoiceItem {
 	const {
@@ -48,66 +96,288 @@ export function buildInvoiceFields(options: BuildInvoiceFieldsOptions): BuiltInv
 		lineItemColumns,
 		externalIdColumn,
 		tableFieldId,
+		templateFields = [],
 	} = options;
 
 	const firstRow = rowGroup.rows[0] || {};
+	const headers = Object.keys(firstRow);
 	const fields: Record<string, unknown> = {};
 
-	// 1. Map header fields from the first row of the group
-	for (const mapping of headerMappings) {
-		if (mapping.fieldId && mapping.column) {
-			const cellVal = firstRow[mapping.column];
-			fields[mapping.fieldId] = cellVal !== undefined && cellVal !== null ? String(cellVal) : '';
+	// 1. Clear all existing template values so defaults (customer details, dates, items) do not linger
+	for (const tf of templateFields) {
+		if (!tf.id) continue;
+		if (tf.type === 'table' || tf.type === 'payslipTable') {
+			fields[tf.id] = [];
+		} else {
+			fields[tf.id] = '';
 		}
 	}
 
-	// 2. Map line items if tableFieldId and lineItemColumns are configured
-	if (tableFieldId && lineItemColumns) {
-		const tableRows: Array<{
+	// 2. Header Fields: Manual mappings take precedence
+	const mappedFieldIds = new Set<string>();
+	for (const mapping of headerMappings) {
+		if (mapping.fieldId && mapping.column) {
+			const cellVal = firstRow[mapping.column];
+			const val = cellVal !== undefined && cellVal !== null ? String(cellVal).trim() : '';
+			fields[mapping.fieldId] = val;
+			mappedFieldIds.add(mapping.fieldId);
+		}
+	}
+
+	// Resolve Line Item Columns: Manual mappings override auto-detection
+	const descriptionCol =
+		lineItemColumns?.description?.trim() ||
+		findMatchingColumn(headers, [
+			'description',
+			'item',
+			'itemname',
+			'itemdescription',
+			'product',
+			'productname',
+			'service',
+			'servicename',
+			'details',
+			'particulars',
+			'title',
+			'name',
+		]);
+
+	const quantityCol =
+		lineItemColumns?.quantity?.trim() ||
+		findMatchingColumn(headers, ['quantity', 'qty', 'count', 'units', 'hours', 'numberofunits']);
+
+	const rateCol =
+		lineItemColumns?.rate?.trim() ||
+		findMatchingColumn(headers, [
+			'rate',
+			'unitprice',
+			'price',
+			'unitcost',
+			'cost',
+			'fee',
+			'hourlyrate',
+			'rateperunit',
+		]);
+
+	const taxCol =
+		lineItemColumns?.tax?.trim() ||
+		findMatchingColumn(headers, [
+			'tax',
+			'taxrate',
+			'vat',
+			'gst',
+			'taxpercentage',
+			'taxpercent',
+			'tax%',
+			'taxes',
+			'itemtax',
+			'linetax',
+			'taxamount',
+			'taxvalue',
+		]);
+
+	const amountCol = findMatchingColumn(headers, ['amount', 'linetotal', 'totalamount', 'subtotal', 'total']);
+
+	// 3. For unmapped template fields, auto-detect matching columns from spreadsheet headers
+	for (const tf of templateFields) {
+		if (!tf.id || mappedFieldIds.has(tf.id)) continue;
+		if (tf.type === 'table' || tf.type === 'payslipTable') continue;
+
+		const candidates: string[] = [];
+		if (tf.label) candidates.push(tf.label);
+		if (tf.type) candidates.push(tf.type);
+		if (tf.id) candidates.push(tf.id);
+
+		switch (tf.type) {
+			case 'invoiceNumber':
+			case 'invoiceLabel':
+				candidates.push(
+					'invoicenumber',
+					'invoiceno',
+					'invoicenum',
+					'invoiceid',
+					'invoice',
+					'invnumber',
+					'invno',
+					'inv',
+					'orderid',
+					'ordernumber',
+					'orderno',
+					'order',
+				);
+				break;
+			case 'customDate':
+			case 'date':
+				candidates.push('invoicedate', 'date', 'issuedate', 'createddate', 'billdate');
+				break;
+			case 'dueDate':
+				candidates.push('duedate', 'paymentdue', 'paymentduedate', 'due');
+				break;
+			case 'billTo':
+				candidates.push(
+					'billto',
+					'customername',
+					'customer',
+					'clientname',
+					'client',
+					'billedto',
+					'recipient',
+					'company',
+					'companyname',
+				);
+				break;
+			case 'shipTo':
+				candidates.push('shipto', 'shippingaddress', 'deliveryaddress', 'shippedto', 'shipping');
+				break;
+			case 'poNumber':
+				candidates.push('ponumber', 'pono', 'po', 'purchaseorder', 'purchaseordernumber');
+				break;
+			case 'terms':
+			case 'paymentTerms':
+				candidates.push('terms', 'paymentterms', 'conditions');
+				break;
+			case 'notes':
+				candidates.push('notes', 'note', 'memo', 'remarks', 'comments');
+				break;
+			case 'amountPaid':
+				candidates.push('amountpaid', 'paidamount', 'paid', 'deposit');
+				break;
+			default:
+				if (tf.label && tf.label.toLowerCase().includes('email')) {
+					candidates.push('customeremail', 'clientemail', 'email', 'billingemail');
+				}
+				break;
+		}
+
+		// Don't auto-match line item columns to header fields
+		const candidatesFiltered = candidates.filter((c) => {
+			const norm = normalizeKey(c);
+			return (
+				norm !== normalizeKey(descriptionCol || '') &&
+				norm !== normalizeKey(rateCol || '') &&
+				norm !== normalizeKey(quantityCol || '')
+			);
+		});
+
+		const matchedCol = findMatchingColumn(headers, candidatesFiltered);
+		if (matchedCol && firstRow[matchedCol] !== undefined && firstRow[matchedCol] !== null) {
+			const cellVal = String(firstRow[matchedCol]).trim();
+			fields[tf.id] = cellVal;
+			if (tf.type) fields[tf.type] = cellVal;
+			if (tf.label) fields[tf.label] = cellVal;
+		} else {
+			fields[tf.id] = '';
+			if (tf.type) fields[tf.type] = '';
+		}
+	}
+
+	// 4. Map line items
+	const tableRows: Array<{
+		description: string;
+		quantity: string | number;
+		rate: string | number;
+		tax?: string | number;
+		amount?: string | number;
+	}> = [];
+
+	for (const row of rowGroup.rows) {
+		const desc = descriptionCol ? row[descriptionCol] : undefined;
+		const rate = rateCol ? row[rateCol] : undefined;
+		const qty = quantityCol ? row[quantityCol] : undefined;
+		const tax = taxCol ? row[taxCol] : undefined;
+		const amount = amountCol ? row[amountCol] : undefined;
+
+		// Skip row if description, rate, and amount are all empty
+		if (isNilOrEmpty(desc) && isNilOrEmpty(rate) && isNilOrEmpty(amount)) {
+			continue;
+		}
+
+		const qtyStr =
+			qty !== undefined && qty !== null && String(qty).trim() !== '' ? String(qty).trim() : '1';
+		const qtyNum = parseFloat(qtyStr) || 1;
+		let rateStr = '0';
+		if (!isNilOrEmpty(rate)) {
+			rateStr = String(rate).trim();
+		} else if (!isNilOrEmpty(amount)) {
+			const amtNum = parseFloat(String(amount).trim()) || 0;
+			rateStr = (amtNum / qtyNum).toFixed(2);
+		}
+
+		const rateNum = parseFloat(rateStr) || 0;
+		const cleanTaxStr = !isNilOrEmpty(tax) ? String(tax).replace(/%/g, '').trim() : '';
+		const taxNum = cleanTaxStr ? parseFloat(cleanTaxStr) || 0 : 0;
+		const calcAmount = !isNilOrEmpty(amount)
+			? String(amount).trim()
+			: (qtyNum * rateNum + (qtyNum * rateNum * taxNum) / 100).toFixed(2);
+
+		const lineItem: {
 			description: string;
 			quantity: string | number;
 			rate: string | number;
 			tax?: string | number;
-		}> = [];
+			amount?: string | number;
+		} = {
+			description: desc !== undefined && desc !== null ? String(desc).trim() : '',
+			quantity: qtyStr,
+			rate: rateStr,
+			amount: calcAmount,
+		};
 
-		for (const row of rowGroup.rows) {
-			const desc = lineItemColumns.description ? row[lineItemColumns.description] : undefined;
-			const rate = lineItemColumns.rate ? row[lineItemColumns.rate] : undefined;
-			const qty = lineItemColumns.quantity ? row[lineItemColumns.quantity] : undefined;
-			const tax = lineItemColumns.tax ? row[lineItemColumns.tax] : undefined;
-
-			// Rows with an empty description and empty rate are skipped
-			if (isNilOrEmpty(desc) && isNilOrEmpty(rate)) {
-				continue;
-			}
-
-			const lineItem: {
-				description: string;
-				quantity: string | number;
-				rate: string | number;
-				tax?: string | number;
-			} = {
-				description: desc !== undefined && desc !== null ? String(desc) : '',
-				quantity: qty !== undefined && qty !== null ? String(qty) : '',
-				rate: rate !== undefined && rate !== null ? String(rate) : '',
-			};
-
-			if (tax !== undefined && tax !== null && String(tax).trim() !== '') {
-				lineItem.tax = String(tax);
-			}
-
-			tableRows.push(lineItem);
+		if (cleanTaxStr) {
+			lineItem.tax = cleanTaxStr;
 		}
 
-		if (tableRows.length > 0) {
-			fields[tableFieldId] = tableRows;
-		}
+		tableRows.push(lineItem);
 	}
 
-	// 3. Set externalId from first row of group if specified
+	// Completely replace the line-item collection
+	if (tableFieldId) {
+		fields[tableFieldId] = tableRows;
+	}
+	for (const tf of templateFields) {
+		if (tf.id && (tf.type === 'table' || tf.type === 'payslipTable')) {
+			fields[tf.id] = tableRows;
+		}
+	}
+	fields['table'] = tableRows;
+	fields['payslipTable'] = tableRows;
+
+	// Enable tax column if any line items have tax or if a tax column was provided
+	const hasAnyTax =
+		Boolean(taxCol) ||
+		tableRows.some(
+			(r) =>
+				r.tax !== undefined &&
+				r.tax !== null &&
+				String(r.tax).trim() !== '' &&
+				String(r.tax).trim() !== '0',
+		);
+
+	if (hasAnyTax) {
+		fields['taxColumn'] = true;
+	}
+
+	// 5. Set externalId from first row of group if specified or auto-detected
 	let externalId: string | undefined;
-	if (externalIdColumn && firstRow[externalIdColumn] !== undefined && firstRow[externalIdColumn] !== null) {
-		const extVal = String(firstRow[externalIdColumn]).trim();
+	const resolvedExternalIdCol =
+		externalIdColumn ||
+		findMatchingColumn(headers, [
+			'invoicenumber',
+			'invoiceno',
+			'invoiceid',
+			'invoice',
+			'inv',
+			'orderid',
+			'ordernumber',
+			'id',
+		]);
+
+	if (
+		resolvedExternalIdCol &&
+		firstRow[resolvedExternalIdCol] !== undefined &&
+		firstRow[resolvedExternalIdCol] !== null
+	) {
+		const extVal = String(firstRow[resolvedExternalIdCol]).trim();
 		if (extVal.length > 0) {
 			externalId = extVal;
 		}

@@ -55,13 +55,16 @@ When you click **Test step** in n8n, the node verifies your credentials against 
 The **InvoicingBuilder** node provides one resource (**Invoice**) and three actions:
 
 ### 1. Create Invoice
-Generates rendered invoice documents from incoming spreadsheet row items.
+Generates rendered invoice documents directly from a Google Sheet.
 
+- **Google Spreadsheet**: Provide the Google Spreadsheet URL or Spreadsheet ID.
+- **Worksheet / Sheet Name**: Name or ID of the worksheet tab (e.g. `Sheet1`).
+- **Google Authentication**: Choose authentication method (`Public / Anyone with Link`, `Google API Key / Bearer Token`, or `InvoicingBuilder Backend Proxy`).
 - **Template**: Choose a template from your InvoicingBuilder account (automatically paged from `GET /api/v1/templates`).
 - **Format**: `PDF` (default) or `PNG`.
-- **Group Rows By Column**: Optional column name (e.g. `InvoiceID` or `OrderNumber`). Rows sharing the same value are grouped into a single invoice. Header fields are taken from the first row of each group, and each row becomes a line item in the invoice table. If left empty, each incoming item is treated as its own invoice.
-- **Header Field Mappings**: Map template header fields (customer name, date, invoice number, etc.) to incoming row property names.
-- **Line Item Columns**: Map columns for `Description`, `Quantity`, `Rate`, and `Tax %`. Rows where both description and rate are empty are automatically skipped.
+- **Group Rows By Column**: Optional spreadsheet column name (e.g. `InvoiceID` or `OrderNumber`). Rows sharing the same value are grouped into a single invoice. Header fields are taken from the first row of each group, and each row becomes a line item in the invoice table. If empty, all rows become line items in a single invoice.
+- **Header Field Mappings**: Map template header fields (customer name, email, date, invoice number, etc.) to spreadsheet column names. **Template defaults are cleared before populating**, ensuring stale customer or company data is never retained.
+- **Line Item Columns**: Map columns for `Description`, `Quantity`, `Rate`, and `Tax %`. The spreadsheet line items completely replace any default items in the template. Rows where both description and rate are empty are automatically skipped.
 - **External ID Column**: Optional column containing an idempotency key (from the first row of the group) so retries do not create duplicate invoices.
 - **Save To Invoice History**: Toggle whether generated invoices should be saved to your InvoicingBuilder invoice history (defaults to `true`).
 - **Binary Property**: The name of the binary property in which the document is returned (defaults to `data`).
@@ -69,7 +72,7 @@ Generates rendered invoice documents from incoming spreadsheet row items.
 #### Output
 - **1 Invoice**: Returns a single PDF or PNG named `invoice.pdf` or `invoice.png`.
 - **2 Invoices**: Returns a zip archive named `invoices.zip` containing both generated invoices.
-- **Metadata**: JSON output includes `success: true`, `invoiceCount`, `format`, `fileName`, and `invoiceIds` (when saved to history).
+- **Metadata**: JSON output includes `success: true`, `invoiceCount`, `format`, `fileName`, `spreadsheetId`, `worksheet`, and `invoiceIds` (when saved to history).
 
 ### 2. Generate Report
 Fetches aggregate invoice metrics and zero-filled monthly breakdowns grouped by currency.
@@ -105,26 +108,18 @@ If an execution receives rows that resolve to more than 2 invoices, the node hal
 Found N invoices; the limit is 2 per execution. Split the rows (e.g. with Loop Over Items or Limit) and try again.
 ```
 
-### How to Process Large Batches:
-Use n8n's built-in **Loop Over Items** or **Limit** node upstream:
-1. Configure **Loop Over Items** with a batch size of `2` (or group items before looping).
-2. Connect the loop output to **InvoicingBuilder**.
-3. Each iteration generates 1 or 2 invoices safely and reliably.
-
 ---
 
 ## Example Workflow
 
-### Batch Invoicing from Google Sheets to Email
+### Google Sheets to InvoicingBuilder to Email
 
 ```text
-[Google Sheets Node]
-   (Fetch new orders/rows)
-         │
-         ▼
 [InvoicingBuilder Node]
    Resource: Invoice
    Operation: Create
+   Google Spreadsheet: https://docs.google.com/spreadsheets/d/.../edit
+   Worksheet: Orders
    Template: Standard Tax Invoice
    Group Rows By Column: OrderId
    Line Items: Description -> ItemTitle, Qty -> Quantity, Rate -> Price
@@ -136,9 +131,8 @@ Use n8n's built-in **Loop Over Items** or **Limit** node upstream:
    Attachments: Binary Property 'data'
 ```
 
-1. **Google Sheets**: Reads new rows containing customer orders and line items.
-2. **InvoicingBuilder**: Groups lines sharing the same `OrderId`, populates the template, renders the invoice PDF, and writes it to the `data` binary property.
-3. **Gmail / Send Email**: Attaches the binary file directly to an outgoing confirmation email.
+1. **InvoicingBuilder**: Connects directly to Google Sheets, retrieves sheet headers and rows, clears template defaults, populates spreadsheet values, recalculates totals, generates the invoice PDF, and writes it to the `data` binary property.
+2. **Gmail / Send Email**: Attaches the binary file directly to an outgoing confirmation email.
 
 ---
 

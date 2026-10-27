@@ -15,7 +15,7 @@ export const invoiceOperations: INodeProperties[] = [
 			{
 				name: 'Create',
 				value: 'create',
-				description: 'Create an invoice (PDF or PNG) from rows of data',
+				description: 'Create an invoice (PDF or PNG) from a Google Sheet',
 				action: 'Create an invoice',
 			},
 			{
@@ -36,6 +36,88 @@ export const invoiceOperations: INodeProperties[] = [
 ];
 
 export const invoiceFields: INodeProperties[] = [
+	// ----------------------------------
+	// Google Sheets Connection & Data Retrieval
+	// ----------------------------------
+	{
+		displayName: 'Google Spreadsheet',
+		name: 'spreadsheet',
+		type: 'string',
+		required: true,
+		default: '',
+		placeholder: 'https://docs.google.com/spreadsheets/d/... or Spreadsheet ID',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+			},
+		},
+		description: 'Enter the Google Spreadsheet URL or Spreadsheet ID',
+	},
+	{
+		displayName: 'Worksheet / Sheet Name',
+		name: 'worksheet',
+		type: 'string',
+		required: true,
+		default: 'Sheet1',
+		placeholder: 'Sheet1',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+			},
+		},
+		description: 'The name or ID of the worksheet/tab in the Google Spreadsheet',
+	},
+	{
+		displayName: 'Google Authentication',
+		name: 'googleAuthType',
+		type: 'options',
+		options: [
+			{
+				name: 'Public / Anyone with Link',
+				value: 'public',
+				description: 'Access sheet via public link or web export (no auth required)',
+			},
+			{
+				name: 'Google API Key / Bearer Token',
+				value: 'apiKey',
+				description: 'Access sheet using Google Cloud API Key or Bearer token',
+			},
+			{
+				name: 'InvoicingBuilder Backend Proxy',
+				value: 'backendProxy',
+				description: 'Access sheet via InvoicingBuilder backend proxy',
+			},
+		],
+		default: 'public',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+			},
+		},
+		description: 'Method to authenticate and retrieve data from Google Sheets',
+	},
+	{
+		displayName: 'Google API Key / Bearer Token',
+		name: 'googleApiKey',
+		type: 'string',
+		typeOptions: { password: true },
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				googleAuthType: ['apiKey'],
+			},
+		},
+		description: 'Google Cloud API key or OAuth Bearer token to authorize Google Sheets API requests',
+	},
+
+	// ----------------------------------
+	// Template Selection
+	// ----------------------------------
 	{
 		displayName: 'Template Name or ID',
 		name: 'templateId',
@@ -79,6 +161,10 @@ export const invoiceFields: INodeProperties[] = [
 		},
 		description: 'Output document format',
 	},
+
+	// ----------------------------------
+	// Row Grouping & Column Mapping
+	// ----------------------------------
 	{
 		displayName: 'Group Rows By Column',
 		name: 'groupBy',
@@ -91,7 +177,7 @@ export const invoiceFields: INodeProperties[] = [
 			},
 		},
 		description:
-			'Rows with the same value in this column become one invoice (header fields from the first row of the group, one table line per row). If empty, each incoming item is its own invoice with one line.',
+			'Spreadsheet column to group rows into separate invoices (e.g. OrderNumber or InvoiceID). Rows sharing the same value become one invoice. If empty, all rows become line items in a single invoice.',
 	},
 	{
 		displayName: 'Header Field Mappings',
@@ -108,7 +194,8 @@ export const invoiceFields: INodeProperties[] = [
 			},
 		},
 		default: {},
-		description: 'Map template header fields to incoming item columns',
+		description:
+			'Map template header fields (customer name, email, dates, etc.) to Google Sheets column names. Any unmapped or missing fields will be cleared in the generated invoice.',
 		options: [
 			{
 				name: 'mappings',
@@ -131,7 +218,7 @@ export const invoiceFields: INodeProperties[] = [
 						name: 'column',
 						type: 'string',
 						default: '',
-						description: 'Name of the incoming item property/column (expressions allowed)',
+						description: 'Name of the column in the Google Sheet',
 					},
 				],
 			},
@@ -150,35 +237,35 @@ export const invoiceFields: INodeProperties[] = [
 			},
 		},
 		description:
-			'Map incoming row columns to line item table fields. Rows with an empty description and empty rate are skipped.',
+			'Map Google Sheets columns to line item table fields. These line items completely replace any default items in the template.',
 		options: [
 			{
 				displayName: 'Description Column',
 				name: 'description',
 				type: 'string',
 				default: '',
-				description: 'Name of the item property containing the item description',
+				description: 'Spreadsheet column containing the item description',
 			},
 			{
 				displayName: 'Quantity Column',
 				name: 'quantity',
 				type: 'string',
 				default: '',
-				description: 'Name of the item property containing the quantity',
+				description: 'Spreadsheet column containing the item quantity',
 			},
 			{
 				displayName: 'Rate Column',
 				name: 'rate',
 				type: 'string',
 				default: '',
-				description: 'Name of the item property containing the unit price or rate',
+				description: 'Spreadsheet column containing the unit price or rate',
 			},
 			{
 				displayName: 'Tax % Column',
 				name: 'tax',
 				type: 'string',
 				default: '',
-				description: 'Name of the item property containing the tax percentage',
+				description: 'Spreadsheet column containing the tax percentage',
 			},
 		],
 	},
@@ -194,8 +281,12 @@ export const invoiceFields: INodeProperties[] = [
 			},
 		},
 		description:
-			'Value from the first row of each group, sent as externalId so retries do not duplicate',
+			'Spreadsheet column name to use as an idempotency key (from the first row of each group) so retries do not duplicate',
 	},
+
+	// ----------------------------------
+	// Document Output Options
+	// ----------------------------------
 	{
 		displayName: 'Save To Invoice History',
 		name: 'saveToHistory',

@@ -3,6 +3,7 @@ import { groupRows } from '../nodes/InvoicingBuilder/helpers/groupRows';
 import { buildInvoiceFields } from '../nodes/InvoicingBuilder/helpers/buildInvoiceFields';
 import { normalizeBaseUrl, DEFAULT_BASE_URL } from '../nodes/InvoicingBuilder/helpers/request';
 import { formatApiError } from '../nodes/InvoicingBuilder/helpers/errors';
+import { parseCsv, extractSpreadsheetId } from '../nodes/InvoicingBuilder/helpers/googleSheets';
 
 describe('groupRows pure function', () => {
 	it('groups rows by column value', () => {
@@ -21,16 +22,34 @@ describe('groupRows pure function', () => {
 		expect(result[1].itemIndexes).toEqual([2]);
 	});
 
-	it('handles ungrouped when groupBy column is undefined or empty', () => {
+	it('groups all rows into 1 single invoice when groupBy column is undefined or empty', () => {
 		const items = [{ a: 1 }, { a: 2 }, { a: 3 }];
 		const resultUndefined = groupRows(items, undefined);
-		expect(resultUndefined).toHaveLength(3);
-		expect(resultUndefined[0].rows[0]).toEqual({ a: 1 });
-		expect(resultUndefined[1].rows[0]).toEqual({ a: 2 });
-		expect(resultUndefined[2].rows[0]).toEqual({ a: 3 });
+		expect(resultUndefined).toHaveLength(1);
+		expect(resultUndefined[0].rows).toHaveLength(3);
+		expect(resultUndefined[0].rows).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+		expect(resultUndefined[0].itemIndexes).toEqual([0, 1, 2]);
 
 		const resultEmpty = groupRows(items, '   ');
-		expect(resultEmpty).toHaveLength(3);
+		expect(resultEmpty).toHaveLength(1);
+		expect(resultEmpty[0].rows).toHaveLength(3);
+	});
+
+	it('auto-detects invoice identifier column when groupBy is not provided', () => {
+		const items = [
+			{ 'Invoice #': 'INV-1', item: 'Item 1' },
+			{ 'Invoice #': 'INV-1', item: 'Item 2' },
+			{ 'Invoice #': 'INV-2', item: 'Item 3' },
+			{ 'Invoice #': 'INV-3', item: 'Item 4' },
+		];
+		const result = groupRows(items);
+		expect(result).toHaveLength(3);
+		expect(result[0].groupKey).toBe('INV-1');
+		expect(result[0].rows).toHaveLength(2);
+		expect(result[1].groupKey).toBe('INV-2');
+		expect(result[1].rows).toHaveLength(1);
+		expect(result[2].groupKey).toBe('INV-3');
+		expect(result[2].rows).toHaveLength(1);
 	});
 
 	it('preserves mixed-case values as distinct group keys', () => {
@@ -143,13 +162,121 @@ describe('buildInvoiceFields pure function', () => {
 			quantity: '10',
 			rate: '100',
 			tax: '5',
+			amount: '1050.00',
 		});
 		expect(table[1]).toEqual({
 			description: 'Development',
 			quantity: '20',
 			rate: '150',
 			tax: '10',
+			amount: '3300.00',
 		});
+	});
+
+	it('automatically maps line items and header fields when no manual mappings are configured', () => {
+		const rowGroup = {
+			rows: [
+				{
+					'Description': 'Web Development',
+					'Qty.': 2,
+					'Rate': 1500,
+					'Amount': 3000,
+					'Customer Name': 'Acme Global Corp',
+					'Invoice #': 'INV-2026-001',
+					'Date': '2026-10-27',
+					'Due Date': '2026-11-27',
+					'PO Number': 'PO-9988',
+				},
+				{
+					'Description': 'Cloud Hosting',
+					'Qty.': 1,
+					'Rate': 500,
+					'Amount': 500,
+					'Customer Name': 'Acme Global Corp',
+					'Invoice #': 'INV-2026-001',
+				},
+			],
+		};
+
+		const result = buildInvoiceFields({
+			rowGroup,
+			templateId: 'standard-invoice',
+			format: 'pdf',
+			headerMappings: [], // No manual mappings configured
+			lineItemColumns: {}, // No manual columns configured
+			templateFields: [
+				{ id: 'comp_inv_num', type: 'invoiceNumber', label: 'Invoice #' },
+				{ id: 'comp_billto', type: 'billTo', label: 'Bill To' },
+				{ id: 'comp_date', type: 'date', label: 'Date' },
+				{ id: 'comp_duedate', type: 'dueDate', label: 'Due Date' },
+				{ id: 'comp_ponum', type: 'poNumber', label: 'PO Number' },
+				{ id: 'comp_notes', type: 'notes', label: 'Notes' },
+				{ id: 'comp_table', type: 'table', label: 'Table' },
+			],
+		});
+
+		// Auto-detected header fields
+		expect(result.fields.comp_inv_num).toBe('INV-2026-001');
+		expect(result.fields.comp_billto).toBe('Acme Global Corp');
+		expect(result.fields.comp_date).toBe('2026-10-27');
+		expect(result.fields.comp_duedate).toBe('2026-11-27');
+		expect(result.fields.comp_ponum).toBe('PO-9988');
+		// Notes was omitted from spreadsheet, so cleared to ''
+		expect(result.fields.comp_notes).toBe('');
+
+		// Auto-detected line items
+		const table = result.fields.comp_table as Array<{
+			description: string;
+			quantity: string;
+			rate: string;
+			amount: string;
+		}>;
+		expect(table).toHaveLength(2);
+		expect(table[0].description).toBe('Web Development');
+		expect(table[0].quantity).toBe('2');
+		expect(table[0].rate).toBe('1500');
+		expect(table[0].amount).toBe('3000');
+		expect(table[1].description).toBe('Cloud Hosting');
+		expect(table[1].quantity).toBe('1');
+		expect(table[1].rate).toBe('500');
+		expect(table[1].amount).toBe('500');
+
+		// External ID auto-detected from Invoice #
+		expect(result.externalId).toBe('INV-2026-001');
+	});
+
+	it('auto-detects Tax column and enables taxColumn in fields', () => {
+		const rowGroup = {
+			rows: [
+				{
+					'Description': 'Widget',
+					'Qty': 2,
+					'Rate': 100,
+					'Tax': '10%',
+				},
+			],
+		};
+
+		const result = buildInvoiceFields({
+			rowGroup,
+			templateId: 'standard-invoice',
+			format: 'pdf',
+			headerMappings: [],
+			lineItemColumns: {},
+			templateFields: [{ id: 'comp_table', type: 'table', label: 'Table' }],
+		});
+
+		const table = result.fields.comp_table as Array<{
+			description: string;
+			quantity: string;
+			rate: string;
+			tax?: string;
+			amount?: string;
+		}>;
+		expect(table).toHaveLength(1);
+		expect(table[0].tax).toBe('10');
+		expect(table[0].amount).toBe('220.00'); // 2 * 100 + 10% = 220.00
+		expect(result.fields.taxColumn).toBe(true);
 	});
 
 	it('passes through cell values as strings without reformatting dates or numbers', () => {
@@ -269,5 +396,103 @@ describe('formatApiError', () => {
 		};
 		const formatted404 = formatApiError(err404);
 		expect(formatted404.message).toBe('Template not found');
+	});
+});
+
+describe('Google Sheets Helpers', () => {
+	it('extractSpreadsheetId extracts ID from full URL or raw ID', () => {
+		expect(
+			extractSpreadsheetId(
+				'https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit#gid=0',
+			),
+		).toBe('1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms');
+
+		expect(extractSpreadsheetId('1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms')).toBe(
+			'1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms',
+		);
+	});
+
+	it('parseCsv handles quotes, commas, and newlines correctly', () => {
+		const csv = `Customer Name,Customer Email,Item,Quantity,Rate
+"XYZ Company","xyz@example.com","Monitor, 27-inch",1,299.99
+"XYZ Company","xyz@example.com","Keyboard ""Mechanical""",2,89.50
+`;
+		const { headers, rows } = parseCsv(csv);
+		expect(headers).toEqual(['Customer Name', 'Customer Email', 'Item', 'Quantity', 'Rate']);
+		expect(rows).toHaveLength(2);
+		expect(rows[0]['Customer Name']).toBe('XYZ Company');
+		expect(rows[0]['Item']).toBe('Monitor, 27-inch');
+		expect(rows[0]['Rate']).toBe('299.99');
+		expect(rows[1]['Item']).toBe('Keyboard "Mechanical"');
+		expect(rows[1]['Quantity']).toBe('2');
+	});
+});
+
+describe('Template Value Clearing & Replacement (Requirement 3)', () => {
+	it('clears template defaults and populates exclusively with new spreadsheet data', () => {
+		// Selected template initially contains:
+		// Customer Name: ABC Company (comp_billto)
+		// Customer Email: abc@example.com (comp_email)
+		// Notes: "Default terms and notes" (comp_notes)
+		// Item 1: Laptop, Item 2: Keyboard (comp_table)
+		const templateFields = [
+			{ id: 'comp_billto', type: 'billTo', value: 'ABC Company' },
+			{ id: 'comp_email', type: 'textarea', value: 'abc@example.com' },
+			{ id: 'comp_notes', type: 'notes', value: 'Default terms and notes' },
+			{
+				id: 'comp_table',
+				type: 'table',
+				value: [{ description: 'Laptop' }, { description: 'Keyboard' }],
+			},
+		];
+
+		// Google Sheets provides:
+		// Customer Name: XYZ Company
+		// Customer Email: xyz@example.com
+		// Item 1: Monitor
+		const rowGroup = {
+			rows: [
+				{
+					'Customer Name': 'XYZ Company',
+					'Customer Email': 'xyz@example.com',
+					'Item Name': 'Monitor',
+					Qty: 1,
+					Price: 200,
+				},
+			],
+		};
+
+		const result = buildInvoiceFields({
+			rowGroup,
+			templateId: 'tmpl_standard',
+			format: 'pdf',
+			headerMappings: [
+				{ fieldId: 'comp_billto', column: 'Customer Name' },
+				{ fieldId: 'comp_email', column: 'Customer Email' },
+			],
+			tableFieldId: 'comp_table',
+			lineItemColumns: {
+				description: 'Item Name',
+				quantity: 'Qty',
+				rate: 'Price',
+			},
+			templateFields,
+		});
+
+		// 1. Mapped fields contain new spreadsheet data
+		expect(result.fields.comp_billto).toBe('XYZ Company');
+		expect(result.fields.comp_email).toBe('xyz@example.com');
+
+		// 2. Unmapped template field (notes) is explicitly cleared and does NOT retain "Default terms and notes"
+		expect(result.fields.comp_notes).toBe('');
+
+		// 3. Line items are completely replaced with Monitor; Laptop and Keyboard are gone!
+		const table = result.fields.comp_table as Array<{ description: string; quantity: string; rate: string }>;
+		expect(table).toHaveLength(1);
+		expect(table[0].description).toBe('Monitor');
+		expect(table[0].quantity).toBe('1');
+		expect(table[0].rate).toBe('200');
+		expect(table.some((i) => i.description === 'Laptop')).toBe(false);
+		expect(table.some((i) => i.description === 'Keyboard')).toBe(false);
 	});
 });
