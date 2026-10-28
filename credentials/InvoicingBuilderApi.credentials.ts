@@ -8,10 +8,14 @@ import type {
 export class InvoicingBuilderApi implements ICredentialType {
 	name = 'invoicingBuilderApi';
 
-	displayName = 'Invoicing Builder API';
+	displayName = 'InvoicingBuilder API';
 
-	// Link to your community node's README
-	documentationUrl = 'https://github.com/org/-invoicing-builder?tab=readme-ov-file#credentials';
+	documentationUrl = 'https://invoicingbuilder.com/docs';
+
+	icon = {
+		light: 'file:../nodes/InvoicingBuilder/invoicingBuilder.svg',
+		dark: 'file:../nodes/InvoicingBuilder/invoicingBuilder.dark.svg',
+	} as const;
 
 	properties: INodeProperties[] = [
 		{
@@ -21,6 +25,16 @@ export class InvoicingBuilderApi implements ICredentialType {
 			typeOptions: { password: true },
 			required: true,
 			default: '',
+			description: 'InvoicingBuilder API key (starts with ib_)',
+		},
+		{
+			displayName: 'Base URL',
+			name: 'baseUrl',
+			type: 'string',
+			required: true,
+			default: 'https://api.invoicingbuilder.com',
+			description:
+				'The InvoicingBuilder API base URL. Trailing slashes are stripped automatically.',
 		},
 	];
 
@@ -35,8 +49,20 @@ export class InvoicingBuilderApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: 'https://recliner-specked-ebony.ngrok-free.dev',
-			url: '/v1/user',
+			baseURL: '={{$credentials.baseUrl}}',
+			url: '/api/v1/auth',
+			method: 'GET',
 		},
+		rules: [
+			{
+				type: 'responseSuccessBody',
+				properties: {
+					key: 'valid',
+					value: true,
+					message: 'Invalid, revoked or expired API key',
+				},
+			},
+		],
 	};
 }
+

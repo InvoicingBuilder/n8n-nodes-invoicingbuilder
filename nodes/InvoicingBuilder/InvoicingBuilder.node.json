@@ -1,17 +1,17 @@
 {
-	"node": "n8n-nodes-invoicing-builder",
+	"node": "n8n-nodes-invoicingbuilder",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": ["Development"],
 	"resources": {
 		"credentialDocumentation": [
 			{
-				"url": "https://github.com/org/repo?tab=readme-ov-file#credentials"
+				"url": "https://invoicingbuilder.com/docs"
 			}
 		],
 		"primaryDocumentation": [
 			{
-				"url": "https://github.com/org/repo?tab=readme-ov-file"
+				"url": "https://invoicingbuilder.com/docs"
 			}
 		]
 	}
