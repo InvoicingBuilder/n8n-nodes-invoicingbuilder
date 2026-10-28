@@ -291,14 +291,26 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 		});
 		const fieldNames = createFields.map((f) => f.name);
 		expect(fieldNames).toEqual([
+			'templateId',
+			'source',
 			'spreadsheet',
 			'worksheet',
-			'templateId',
+			'clientId',
+			'invoiceNumber',
+			'poNumber',
+			'issueDate',
+			'dueDate',
+			'lineItems',
+			'additionalFields',
 			'format',
 			'sendToClient',
 		]);
 
 		const unwanted = [
+			'clientName',
+			'clientEmail',
+			'billTo',
+			'shipTo',
 			'googleAuthType',
 			'googleApiKey',
 			'groupBy',
@@ -832,3 +844,520 @@ describe('InvoicingBuilder Analyse Trends Operation (Regression Tests)', () => {
 		}
 	});
 });
+
+describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
+	const node = new InvoicingBuilder();
+
+	it('creates an invoice directly from workflow parameters without spreadsheet', async () => {
+		let capturedCreateBody: {
+			invoices: Array<{
+				templateId: string;
+				format: string;
+				clientEmail?: string;
+				clientName?: string;
+				fields: Record<string, unknown>;
+			}>;
+			saveToHistory: boolean;
+			sendToClient: boolean;
+		} | null = null;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'invoice',
+				operation: 'create',
+				source: 'direct',
+				templateId: 'tmpl_123',
+				clientId: 'client_direct_1',
+				format: 'pdf',
+				invoiceNumber: 'INV-2026-001',
+				poNumber: 'PO-2026-999',
+				issueDate: '2026-10-28',
+				dueDate: '2026-11-28',
+				sendToClient: true,
+				lineItems: {
+					item: [
+						{
+							description: 'Consulting Services',
+							quantity: 5,
+							rate: 200,
+							tax: '10%',
+						},
+					],
+				},
+				additionalFields: {
+					notes: 'Custom notes from workflow',
+					logo: 'https://example.com/logo.png',
+					signature: 'data:image/png;base64,sig123',
+				},
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/clients/client_direct_1')) {
+					return {
+						id: 'client_direct_1',
+						name: 'Direct Client Inc',
+						email: 'billing@directclient.com',
+						billTo: 'Direct Client Inc\n456 Market St',
+						shipTo: 'Direct Warehouse\n789 Industrial Rd',
+					};
+				}
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return {
+						id: 'tmpl_123',
+						fields: [
+							{ id: 'comp_billto', type: 'billTo', value: 'Old Default' },
+							{ id: 'comp_shipto', type: 'shipTo', value: 'Old Ship' },
+							{ id: 'comp_invnum', type: 'invoiceNumber', value: 'Old #000' },
+							{ id: 'comp_ponum', type: 'poNumber', value: 'Old PO' },
+							{ id: 'comp_logo', type: 'addLogo', value: 'Old Logo' },
+							{ id: 'comp_sig', type: 'signature', value: 'Old Signature' },
+							{ id: 'tbl_id', type: 'table', value: [{ description: 'Old Item' }] },
+						],
+					};
+				}
+				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
+					return {
+						statusCode: 200,
+						headers: {
+							'x-invoice-count': '1',
+							'x-invoice-ids': 'inv_direct_1',
+							'x-invoices-emailed': 'billing@directclient.com',
+						},
+						body: Buffer.from('%PDF-1.4 direct test pdf'),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result).toHaveLength(1);
+		expect(result[0][0].json.success).toBe(true);
+		expect(result[0][0].json.source).toBe('direct');
+		expect(result[0][0].json.fileName).toBe('invoice.pdf');
+		expect(result[0][0].json.sendToClient).toBe(true);
+		expect(result[0][0].json.emailedTo).toEqual(['billing@directclient.com']);
+		expect(result[0][0].binary?.data).toBeDefined();
+
+		expect(capturedCreateBody).not.toBeNull();
+		const invoice = capturedCreateBody!.invoices[0];
+		expect(invoice.templateId).toBe('tmpl_123');
+		expect(invoice.clientName).toBe('Direct Client Inc');
+		expect(invoice.clientEmail).toBe('billing@directclient.com');
+		expect(invoice.fields.billTo).toBe('Direct Client Inc\n456 Market St');
+		expect(invoice.fields.shipTo).toBe('Direct Warehouse\n789 Industrial Rd');
+		expect(invoice.fields.invoiceNumber).toBe('INV-2026-001');
+		expect(invoice.fields.poNumber).toBe('PO-2026-999');
+		expect(invoice.fields.customDate).toBe('2026-10-28');
+		expect(invoice.fields.dueDate).toBe('2026-11-28');
+		expect(invoice.fields.notes).toBe('Custom notes from workflow');
+		expect(invoice.fields.addLogo).toBe('https://example.com/logo.png');
+		expect(invoice.fields.signature).toBe('data:image/png;base64,sig123');
+
+		// Line items check
+		const lineItems = invoice.fields.table as Array<{
+			description: string;
+			quantity: string;
+			rate: string;
+			tax: string;
+			amount: string;
+		}>;
+		expect(lineItems).toHaveLength(1);
+		expect(lineItems[0].description).toBe('Consulting Services');
+		expect(lineItems[0].quantity).toBe('5');
+		expect(lineItems[0].rate).toBe('200');
+		expect(lineItems[0].tax).toBe('10');
+		expect(lineItems[0].amount).toBe('1100.00');
+	});
+
+	it('falls back to input item json lineItems when parameter is omitted', async () => {
+		let capturedCreateBody: {
+			invoices: Array<{
+				clientName?: string;
+				clientEmail?: string;
+				fields: Record<string, unknown>;
+			}>;
+		} | null = null;
+
+		const context = createMockExecuteContext({
+			items: [
+				{
+					json: {
+						lineItems: [
+							{ description: 'Design Work', quantity: 2, rate: 500 },
+							{ description: 'SEO Work', quantity: 1, rate: 300 },
+						],
+					},
+				},
+			],
+			parameters: {
+				resource: 'invoice',
+				operation: 'create',
+				source: 'direct',
+				templateId: 'tmpl_123',
+				clientId: 'client_json',
+				format: 'png',
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/clients/client_json')) {
+					return {
+						id: 'client_json',
+						name: 'Json Corp',
+						email: 'contact@jsoncorp.com',
+						billTo: 'Json Corp Suite 100',
+					};
+				}
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return { id: 'tmpl_123', fields: [] };
+				}
+				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
+					return {
+						statusCode: 200,
+						headers: {
+							'x-invoice-count': '1',
+							'x-invoice-ids': 'inv_json_1',
+						},
+						body: Buffer.from('PNG test binary'),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0][0].json.fileName).toBe('invoice.png');
+		expect(capturedCreateBody).not.toBeNull();
+		const invoice = capturedCreateBody!.invoices[0];
+		expect(invoice.clientName).toBe('Json Corp');
+		expect(invoice.clientEmail).toBe('contact@jsoncorp.com');
+		expect(invoice.fields.billTo).toBe('Json Corp Suite 100');
+
+		const lineItems = invoice.fields.table as Array<{ description: string; rate: string }>;
+		expect(lineItems).toHaveLength(2);
+		expect(lineItems[0].description).toBe('Design Work');
+		expect(lineItems[1].description).toBe('SEO Work');
+	});
+
+	it('throws error when clientId is missing for direct invoice creation', async () => {
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'invoice',
+				operation: 'create',
+				source: 'direct',
+				templateId: 'tmpl_123',
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return { id: 'tmpl_123', fields: [] };
+				}
+				return {};
+			},
+		});
+
+		await expect(node.execute.call(context)).rejects.toThrow(NodeOperationError);
+		await expect(node.execute.call(context)).rejects.toThrow(
+			'Client Name or ID is required for direct invoice creation. Please select a client.',
+		);
+	});
+
+	it('auto-fills Bill To, Ship To, client name, and email from selected client when parameters are blank', async () => {
+		let capturedCreateBody: {
+			invoices: Array<{
+				clientName?: string;
+				clientEmail?: string;
+				fields: Record<string, unknown>;
+			}>;
+		} | null = null;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'invoice',
+				operation: 'create',
+				source: 'direct',
+				templateId: 'tmpl_123',
+				clientId: 'client_stark',
+				format: 'pdf',
+				lineItems: {
+					item: [{ description: 'Arc Reactor', quantity: 1, rate: 50000 }],
+				},
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/clients/client_stark')) {
+					return {
+						id: 'client_stark',
+						name: 'Stark Industries',
+						email: 'tony@stark.com',
+						billTo: '10880 Malibu Point, CA',
+						shipTo: 'Avengers Compound, NY',
+					};
+				}
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return { id: 'tmpl_123', fields: [] };
+				}
+				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
+					return {
+						statusCode: 200,
+						headers: {
+							'x-invoice-count': '1',
+							'x-invoice-ids': 'inv_stark_1',
+						},
+						body: Buffer.from('PDF test binary'),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0][0].json.success).toBe(true);
+		expect(capturedCreateBody).not.toBeNull();
+		const invoice = capturedCreateBody!.invoices[0];
+		expect(invoice.clientName).toBe('Stark Industries');
+		expect(invoice.clientEmail).toBe('tony@stark.com');
+		expect(invoice.fields.billTo).toBe('10880 Malibu Point, CA');
+		expect(invoice.fields.shipTo).toBe('Avengers Compound, NY');
+	});
+});
+
+describe('InvoicingBuilder Report Resource Workflow', () => {
+	const node = new InvoicingBuilder();
+
+	it('executes summary report under resource: report, operation: summary', async () => {
+		let capturedQs: IDataObject | undefined;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'report',
+				operation: 'summary',
+				from: '2026-01-01',
+				to: '2026-10-28',
+				status: 'paid',
+				sendToUser: true,
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/n8n/reports/summary')) {
+					capturedQs = opts.qs as IDataObject;
+					return {
+						generatedAt: '2026-10-28T00:00:00Z',
+						status: 'paid',
+						sendToUser: true,
+						currencies: [{ currency: 'USD', invoiceCount: 10, totalValue: 10000 }],
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedQs?.status).toBe('paid');
+		expect(capturedQs?.from).toBe('2026-01-01');
+		expect(capturedQs?.to).toBe('2026-10-28');
+		expect(capturedQs?.sendToUser).toBe(true);
+		expect(result[0][0].json.currencies).toBeDefined();
+	});
+
+	it('executes trends report under resource: report, operation: trends', async () => {
+		let capturedQs: IDataObject | undefined;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'report',
+				operation: 'trends',
+				period: 'quarterly',
+				periods: 4,
+				sendToUser: false,
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/n8n/reports/trends')) {
+					capturedQs = opts.qs as IDataObject;
+					return {
+						generatedAt: '2026-10-28T00:00:00Z',
+						period: 'quarterly',
+						currencies: [{ currency: 'USD', series: [] }],
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedQs?.period).toBe('quarterly');
+		expect(capturedQs?.periods).toBe(4);
+		expect(result[0][0].json.period).toBe('quarterly');
+	});
+});
+
+describe('InvoicingBuilder Client Resource Workflow', () => {
+	const node = new InvoicingBuilder();
+
+	it('creates a client with full properties', async () => {
+		let capturedBody: IDataObject | undefined;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'create',
+				name: 'Stark Industries',
+				email: 'tony@stark.com',
+				billTo: '10880 Malibu Point',
+				shipTo: 'Avengers Compound',
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/clients') && opts.method === 'POST') {
+					capturedBody = opts.body as IDataObject;
+					return {
+						id: 'client_stark',
+						name: 'Stark Industries',
+						email: 'tony@stark.com',
+						billTo: '10880 Malibu Point',
+						shipTo: 'Avengers Compound',
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedBody).toEqual({
+			name: 'Stark Industries',
+			email: 'tony@stark.com',
+			billTo: '10880 Malibu Point',
+			shipTo: 'Avengers Compound',
+		});
+		expect(result[0][0].json.id).toBe('client_stark');
+		expect(result[0][0].json.name).toBe('Stark Industries');
+	});
+
+	it('gets a client by ID', async () => {
+		let requestedUrl: string | undefined;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'get',
+				clientId: 'client_123',
+			},
+			httpHandler: async (opts) => {
+				requestedUrl = opts.url;
+				return { id: 'client_123', name: 'Wayne Enterprises' };
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(requestedUrl).toContain('/api/v1/clients/client_123');
+		expect(result[0][0].json.id).toBe('client_123');
+		expect(result[0][0].json.name).toBe('Wayne Enterprises');
+	});
+
+	it('gets all clients and returns multiple execution items', async () => {
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'getAll',
+				returnAll: true,
+			},
+			httpHandler: async () => {
+				return [
+					{ id: 'c_1', name: 'Client 1' },
+					{ id: 'c_2', name: 'Client 2' },
+				];
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0]).toHaveLength(2);
+		expect(result[0][0].json.id).toBe('c_1');
+		expect(result[0][1].json.id).toBe('c_2');
+	});
+
+	it('gets all clients respecting limit when returnAll is false', async () => {
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'getAll',
+				returnAll: false,
+				limit: 1,
+			},
+			httpHandler: async () => {
+				return [
+					{ id: 'c_1', name: 'Client 1' },
+					{ id: 'c_2', name: 'Client 2' },
+				];
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0]).toHaveLength(1);
+		expect(result[0][0].json.id).toBe('c_1');
+	});
+
+	it('updates a client', async () => {
+		let capturedUpdateBody: IDataObject | undefined;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_123',
+				updateFields: {
+					name: 'Wayne Enterprises Updated',
+					email: 'bruce@wayne.com',
+				},
+			},
+			httpHandler: async (opts) => {
+				if (opts.method === 'PUT' && opts.url?.includes('/api/v1/clients/client_123')) {
+					capturedUpdateBody = opts.body as IDataObject;
+					return { id: 'client_123', name: 'Wayne Enterprises Updated', email: 'bruce@wayne.com' };
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedUpdateBody).toEqual({
+			name: 'Wayne Enterprises Updated',
+			email: 'bruce@wayne.com',
+		});
+		expect(result[0][0].json.name).toBe('Wayne Enterprises Updated');
+	});
+
+	it('deletes a client', async () => {
+		let requestedMethod: string | undefined;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'delete',
+				clientId: 'client_123',
+			},
+			httpHandler: async (opts) => {
+				requestedMethod = opts.method;
+				return { success: true, message: 'Client deleted successfully.' };
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(requestedMethod).toBe('DELETE');
+		expect(result[0][0].json.success).toBe(true);
+	});
+
+	it('sends reminder to a client', async () => {
+		let requestedUrl: string | undefined;
+		let requestedMethod: string | undefined;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'sendReminder',
+				clientId: 'client_123',
+			},
+			httpHandler: async (opts) => {
+				requestedUrl = opts.url;
+				requestedMethod = opts.method;
+				return { success: true, message: 'Reminder sent.' };
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(requestedMethod).toBe('POST');
+		expect(requestedUrl).toContain('/api/v1/clients/client_123/remind');
+		expect(result[0][0].json.success).toBe(true);
+	});
+});
+
+

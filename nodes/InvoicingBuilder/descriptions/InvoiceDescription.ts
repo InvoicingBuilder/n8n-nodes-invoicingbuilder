@@ -15,20 +15,8 @@ export const invoiceOperations: INodeProperties[] = [
 			{
 				name: 'Create',
 				value: 'create',
-				description: 'Create an invoice (PDF or PNG) from a Google Sheet',
+				description: 'Create an invoice (PDF or PNG) from a Google Sheet or direct data',
 				action: 'Create an invoice',
-			},
-			{
-				name: 'Generate Report',
-				value: 'generateReport',
-				description: 'Get aggregate invoice metrics and monthly breakdown',
-				action: 'Generate a summary report',
-			},
-			{
-				name: 'Analyse Trends',
-				value: 'analyseTrends',
-				description: 'Get historical trend series with period-over-period percentage changes',
-				action: 'Analyse trends',
 			},
 		],
 		default: 'create',
@@ -37,41 +25,7 @@ export const invoiceOperations: INodeProperties[] = [
 
 export const invoiceFields: INodeProperties[] = [
 	// ----------------------------------
-	// Google Sheets Connection & Data Retrieval
-	// ----------------------------------
-	{
-		displayName: 'Google Spreadsheet',
-		name: 'spreadsheet',
-		type: 'string',
-		required: true,
-		default: '',
-		placeholder: 'https://docs.google.com/spreadsheets/d/... or Spreadsheet ID',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-			},
-		},
-		description: 'Enter the Google Spreadsheet URL or Spreadsheet ID',
-	},
-	{
-		displayName: 'Worksheet / Sheet Name',
-		name: 'worksheet',
-		type: 'string',
-		required: true,
-		default: 'Sheet1',
-		placeholder: 'Sheet1',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-			},
-		},
-		description: 'The name or ID of the worksheet/tab in the Google Spreadsheet',
-	},
-
-	// ----------------------------------
-	// Template Selection
+	// Common Template & Format Selection
 	// ----------------------------------
 	{
 		displayName: 'Template Name or ID',
@@ -90,6 +44,287 @@ export const invoiceFields: INodeProperties[] = [
 		},
 		description:
 			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+	},
+	// ----------------------------------
+	// Data Source Selection
+	// ----------------------------------
+	{
+		displayName: 'Data Source',
+		name: 'source',
+		type: 'options',
+		options: [
+			{
+				name: 'Google Sheet',
+				value: 'googleSheets',
+				description: 'Load invoice data from a Google Spreadsheet',
+			},
+			{
+				name: 'Direct Input / Workflow Data',
+				value: 'direct',
+				description: 'Specify invoice fields directly or map from incoming workflow items',
+			},
+		],
+		default: 'googleSheets',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+			},
+		},
+		description: 'Where to load invoice data from',
+	},
+
+	// ----------------------------------
+	// Google Sheets Connection & Data Retrieval
+	// ----------------------------------
+	{
+		displayName: 'Google Spreadsheet',
+		name: 'spreadsheet',
+		type: 'string',
+		required: true,
+		default: '',
+		placeholder: 'https://docs.google.com/spreadsheets/d/... or Spreadsheet ID',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['googleSheets'],
+			},
+		},
+		description: 'Enter the Google Spreadsheet URL or Spreadsheet ID',
+	},
+	{
+		displayName: 'Worksheet / Sheet Name',
+		name: 'worksheet',
+		type: 'string',
+		required: true,
+		default: 'Sheet1',
+		placeholder: 'Sheet1',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['googleSheets'],
+			},
+		},
+		description: 'The name or ID of the worksheet/tab in the Google Spreadsheet',
+	},
+
+	// ----------------------------------
+	// Direct Input Fields
+	// ----------------------------------
+	{
+		displayName: 'Client Name or ID',
+		name: 'clientId',
+		type: 'options',
+		typeOptions: {
+			loadOptionsMethod: 'getClients',
+		},
+		required: true,
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['direct'],
+			},
+		},
+		description:
+			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+	},
+	{
+		displayName: 'Invoice Number',
+		name: 'invoiceNumber',
+		type: 'string',
+		default: '',
+		placeholder: 'e.g. INV-1001',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['direct'],
+			},
+		},
+		description: 'Custom invoice number. If empty, the template default is preserved.',
+	},
+	{
+		displayName: 'PO Number',
+		name: 'poNumber',
+		type: 'string',
+		default: '',
+		placeholder: 'e.g. PO-98765',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['direct'],
+			},
+		},
+		description: 'Purchase Order number',
+	},
+	{
+		displayName: 'Invoice Date',
+		name: 'issueDate',
+		type: 'dateTime',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['direct'],
+			},
+		},
+		description: 'Issue date in UTC (YYYY-MM-DD)',
+	},
+	{
+		displayName: 'Due Date',
+		name: 'dueDate',
+		type: 'dateTime',
+		default: '',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['direct'],
+			},
+		},
+		description: 'Payment due date in UTC (YYYY-MM-DD)',
+	},
+	{
+		displayName: 'Line Items',
+		name: 'lineItems',
+		type: 'fixedCollection',
+		typeOptions: {
+			multipleValues: true,
+		},
+		placeholder: 'Add Line Item',
+		default: {},
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['direct'],
+			},
+		},
+		options: [
+			{
+				name: 'item',
+				displayName: 'Item',
+				values: [
+					{
+						displayName: 'Amount',
+						name: 'amount',
+						type: 'string',
+						default: '',
+						placeholder: 'Leave blank to auto-calculate (Qty * Rate)',
+						description: 'Total item amount. If omitted, calculated as Quantity * Rate.',
+					},
+					{
+						displayName: 'Description',
+						name: 'description',
+						type: 'string',
+						default: '',
+						required: true,
+						placeholder: 'e.g. Web Development Services',
+						description: 'Description of the service or product',
+					},
+					{
+						displayName: 'Quantity',
+						name: 'quantity',
+						type: 'number',
+						default: 1,
+						description: 'Quantity of items',
+					},
+					{
+						displayName: 'Rate / Price',
+						name: 'rate',
+						type: 'number',
+						default: 0,
+						description: 'Price or rate per unit',
+					},
+					{
+						displayName: 'Tax (%)',
+						name: 'tax',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. 10 or 10%',
+						description: 'Optional tax percentage applied to this line item',
+					},
+				],
+			},
+		],
+		description: 'Line items to include in the invoice table',
+	},
+	{
+		displayName: 'Additional Fields',
+		name: 'additionalFields',
+		type: 'collection',
+		placeholder: 'Add Field',
+		default: {},
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['create'],
+				source: ['direct'],
+			},
+		},
+		options: [
+			{
+				displayName: 'Amount Paid',
+				name: 'amountPaid',
+				type: 'string',
+				default: '',
+				description: 'Amount already paid towards this invoice',
+			},
+			{
+				displayName: 'Custom Fields (JSON)',
+				name: 'customFieldsJson',
+				type: 'json',
+				default: '',
+				description: 'Raw JSON object of field mappings or component values for advanced template customization',
+			},
+			{
+				displayName: 'Logo (URL or Base64)',
+				name: 'logo',
+				type: 'string',
+				default: '',
+				placeholder: 'https://example.com/logo.png or data:image/png;base64,...',
+				description: 'Logo image URL or Base64 data URI to override the template logo',
+			},
+			{
+				displayName: 'Notes',
+				name: 'notes',
+				type: 'string',
+				typeOptions: { rows: 2 },
+				default: '',
+				placeholder: 'e.g. Thank you for your business!',
+				description: 'Custom notes displayed on the invoice',
+			},
+			{
+				displayName: 'Payment Terms',
+				name: 'paymentTerms',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Net 30',
+				description: 'Payment terms label or description',
+			},
+			{
+				displayName: 'Signature (URL or Base64)',
+				name: 'signature',
+				type: 'string',
+				default: '',
+				placeholder: 'https://example.com/signature.png or data:image/png;base64,...',
+				description: 'Signature image URL or Base64 data URI to override the template signature',
+			},
+			{
+				displayName: 'Terms & Conditions',
+				name: 'terms',
+				type: 'string',
+				typeOptions: { rows: 2 },
+				default: '',
+				description: 'Terms and legal conditions',
+			},
+		],
 	},
 	{
 		displayName: 'Format',
@@ -127,6 +362,6 @@ export const invoiceFields: INodeProperties[] = [
 				operation: ['create'],
 			},
 		},
-		description: 'Whether to email the generated invoice to the client email specified in the Google Sheet',
+		description: 'Whether to email the generated invoice to the client email',
 	},
 ];

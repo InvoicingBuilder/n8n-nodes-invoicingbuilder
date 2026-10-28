@@ -1,5 +1,34 @@
 import type { INodeProperties } from 'n8n-workflow';
 
+export const reportOperations: INodeProperties[] = [
+	{
+		displayName: 'Operation',
+		name: 'operation',
+		type: 'options',
+		noDataExpression: true,
+		displayOptions: {
+			show: {
+				resource: ['report'],
+			},
+		},
+		options: [
+			{
+				name: 'Summary',
+				value: 'summary',
+				description: 'Get aggregate invoice metrics and monthly breakdown',
+				action: 'Generate a summary report',
+			},
+			{
+				name: 'Analyse Trends',
+				value: 'trends',
+				description: 'Get historical trend series with period-over-period percentage changes',
+				action: 'Analyse trends',
+			},
+		],
+		default: 'summary',
+	},
+];
+
 export const reportFields: INodeProperties[] = [
 	{
 		displayName: 'From',
@@ -8,8 +37,8 @@ export const reportFields: INodeProperties[] = [
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['generateReport'],
+				resource: ['report', 'invoice'],
+				operation: ['summary', 'generateReport'],
 			},
 		},
 		description: 'Start date in UTC (YYYY-MM-DD, inclusive)',
@@ -21,8 +50,8 @@ export const reportFields: INodeProperties[] = [
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['generateReport'],
+				resource: ['report', 'invoice'],
+				operation: ['summary', 'generateReport'],
 			},
 		},
 		description: 'End date in UTC (YYYY-MM-DD, inclusive)',
@@ -52,8 +81,8 @@ export const reportFields: INodeProperties[] = [
 		default: 'all',
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['generateReport'],
+				resource: ['report', 'invoice'],
+				operation: ['summary', 'generateReport'],
 			},
 		},
 		description: 'Invoice status filter',
@@ -65,8 +94,8 @@ export const reportFields: INodeProperties[] = [
 		default: false,
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['generateReport'],
+				resource: ['report', 'invoice'],
+				operation: ['summary', 'generateReport'],
 			},
 		},
 		description: 'Whether to email the generated report to the current user (associated with the API key)',
