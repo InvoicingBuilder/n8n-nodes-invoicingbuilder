@@ -235,7 +235,6 @@ export class InvoicingBuilder implements INodeType {
 				}
 
 				if (operation === 'generateReport') {
-					const dateBasis = this.getNodeParameter('dateBasis', 0, 'issueDate') as string;
 					const fromRaw = this.getNodeParameter('from', 0, '') as string;
 					const toRaw = this.getNodeParameter('to', 0, '') as string;
 					const status = this.getNodeParameter('status', 0, 'all') as string;
@@ -252,7 +251,6 @@ export class InvoicingBuilder implements INodeType {
 					}
 
 					const qs: IDataObject = {
-						dateBasis,
 						status,
 					};
 					if (from) qs.from = from;
@@ -284,22 +282,16 @@ export class InvoicingBuilder implements INodeType {
 					const period = this.getNodeParameter('period', 0, 'monthly') as string;
 					const periods = this.getNodeParameter('periods', 0, undefined) as number | undefined;
 					const endDateRaw = this.getNodeParameter('endDate', 0, '') as string;
-					const dateBasis = this.getNodeParameter('dateBasis', 0, 'issueDate') as string;
-					const currency = this.getNodeParameter('currency', 0, '') as string;
 					const sendToUser = this.getNodeParameter('sendToUser', 0, false) as boolean;
 
 					const qs: IDataObject = {
 						period,
-						dateBasis,
 					};
 					if (periods && periods >= 2 && periods <= 36) {
 						qs.periods = periods;
 					}
 					if (endDateRaw) {
 						qs.endDate = endDateRaw.split('T')[0];
-					}
-					if (currency?.trim()) {
-						qs.currency = currency.trim();
 					}
 					if (sendToUser) {
 						qs.sendToUser = true;

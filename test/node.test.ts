@@ -661,6 +661,7 @@ describe('InvoicingBuilder Generate Report Operation (Regression Tests)', () => 
 			],
 		};
 
+		let capturedQs: IDataObject | undefined;
 		const context = createMockExecuteContext({
 			items: [{ json: {} }],
 			parameters: {
@@ -668,12 +669,15 @@ describe('InvoicingBuilder Generate Report Operation (Regression Tests)', () => 
 				from: '2026-01-01T00:00:00.000Z',
 				to: '2026-12-31T00:00:00.000Z',
 				status: 'all',
-				dateBasis: 'issueDate',
 			},
-			httpHandler: async () => reportPayload,
+			httpHandler: async (opts) => {
+				capturedQs = opts.qs as IDataObject;
+				return reportPayload;
+			},
 		});
 
 		const result = await node.execute.call(context);
+		expect(capturedQs?.dateBasis).toBeUndefined();
 		expect(result[0][0].json).toEqual(reportPayload);
 	});
 
@@ -768,6 +772,7 @@ describe('InvoicingBuilder Analyse Trends Operation (Regression Tests)', () => {
 			],
 		};
 
+		let capturedQs: IDataObject | undefined;
 		const context = createMockExecuteContext({
 			items: [{ json: {} }],
 			parameters: {
@@ -775,10 +780,15 @@ describe('InvoicingBuilder Analyse Trends Operation (Regression Tests)', () => {
 				period: 'monthly',
 				periods: 12,
 			},
-			httpHandler: async () => trendsPayload,
+			httpHandler: async (opts) => {
+				capturedQs = opts.qs as IDataObject;
+				return trendsPayload;
+			},
 		});
 
 		const result = await node.execute.call(context);
+		expect(capturedQs?.dateBasis).toBeUndefined();
+		expect(capturedQs?.currency).toBeUndefined();
 		expect(result[0][0].json).toEqual(trendsPayload);
 	});
 

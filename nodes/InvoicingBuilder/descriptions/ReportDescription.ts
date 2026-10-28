@@ -2,29 +2,6 @@ import type { INodeProperties } from 'n8n-workflow';
 
 export const reportFields: INodeProperties[] = [
 	{
-		displayName: 'Date Basis',
-		name: 'dateBasis',
-		type: 'options',
-		options: [
-			{
-				name: 'Issue Date',
-				value: 'issueDate',
-			},
-			{
-				name: 'Created At',
-				value: 'createdAt',
-			},
-		],
-		default: 'issueDate',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['generateReport'],
-			},
-		},
-		description: 'Date field to evaluate for report metrics',
-	},
-	{
 		displayName: 'From',
 		name: 'from',
 		type: 'dateTime',
