@@ -222,9 +222,10 @@ Deletes a client record from InvoicingBuilder:
 - **Client Name or ID**: Select or provide the client ID.
 
 #### Send Payment Reminder
-Dispatches an automated payment reminder email to the client for outstanding or unpaid invoices:
+Dispatches an automated payment reminder email to the client for an outstanding or unpaid invoice:
 - **Client Name or ID**: Select or provide the client ID.
-- **Output**: Status confirmation of the sent reminder email.
+- **Invoice Name or ID**: Select from a dynamic dropdown showing only invoices belonging to the chosen client (searchable with pagination) or provide an invoice ID.
+- **Output**: Status confirmation of the sent reminder email, recipient, and invoice details.
 
 ---
 

@@ -26,6 +26,7 @@ export interface BuildDirectInvoiceOptions {
 	format: 'pdf' | 'png';
 	invoiceNumber?: string;
 	poNumber?: string;
+	clientId?: string;
 	clientName?: string;
 	clientEmail?: string;
 	billTo?: string;
@@ -48,6 +49,7 @@ export function buildDirectInvoice(options: BuildDirectInvoiceOptions): BuiltInv
 		format,
 		invoiceNumber,
 		poNumber,
+		clientId,
 		clientName,
 		clientEmail,
 		billTo,
@@ -214,9 +216,14 @@ export function buildDirectInvoice(options: BuildDirectInvoiceOptions): BuiltInv
 		Object.assign(fields, customObj);
 	}
 
+	if (clientId && clientId.trim()) {
+		fields.clientId = clientId.trim();
+	}
+
 	return {
 		templateId,
 		format,
+		clientId: clientId?.trim() || undefined,
 		clientEmail: clientEmail?.trim() || undefined,
 		clientName: clientName?.trim() || undefined,
 		fields,

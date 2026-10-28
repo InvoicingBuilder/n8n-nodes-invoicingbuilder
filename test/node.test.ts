@@ -1346,9 +1346,10 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 		expect(result[0][0].json.success).toBe(true);
 	});
 
-	it('sends reminder to a client', async () => {
+	it('sends reminder to a client without invoiceId', async () => {
 		let requestedUrl: string | undefined;
 		let requestedMethod: string | undefined;
+		let requestedBody: unknown;
 		const context = createMockExecuteContext({
 			parameters: {
 				resource: 'client',
@@ -1358,6 +1359,7 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 			httpHandler: async (opts) => {
 				requestedUrl = opts.url;
 				requestedMethod = opts.method;
+				requestedBody = opts.body;
 				return { success: true, message: 'Reminder sent.' };
 			},
 		});
@@ -1365,7 +1367,54 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 		const result = await node.execute.call(context);
 		expect(requestedMethod).toBe('POST');
 		expect(requestedUrl).toContain('/api/v1/clients/client_123/remind');
+		expect(requestedBody).toEqual({});
 		expect(result[0][0].json.success).toBe(true);
+	});
+
+	it('sends reminder for a specific invoice of the client', async () => {
+		let requestedUrl: string | undefined;
+		let requestedMethod: string | undefined;
+		let requestedBody: unknown;
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'sendReminder',
+				clientId: { mode: 'list', value: 'client_123' },
+				invoiceId: { mode: 'list', value: 'inv_abc_999' },
+			},
+			httpHandler: async (opts) => {
+				requestedUrl = opts.url;
+				requestedMethod = opts.method;
+				requestedBody = opts.body;
+				return {
+					success: true,
+					message: 'Reminder sent.',
+					invoiceId: 'inv_abc_999',
+					recipient: 'client@example.com',
+				};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(requestedMethod).toBe('POST');
+		expect(requestedUrl).toContain('/api/v1/clients/client_123/remind');
+		expect(requestedBody).toEqual({ invoiceId: 'inv_abc_999' });
+		expect(result[0][0].json.success).toBe(true);
+		expect(result[0][0].json.invoiceId).toBe('inv_abc_999');
+	});
+
+	it('clientFields defines invoiceId for sendReminder operation with dependency on clientId', () => {
+		const invoiceIdParam = clientFields.find((f) => f.name === 'invoiceId');
+		expect(invoiceIdParam).toBeDefined();
+		expect(invoiceIdParam?.type).toBe('resourceLocator');
+		expect(invoiceIdParam?.required).toBe(true);
+		expect(invoiceIdParam?.typeOptions?.loadOptionsDependsOn).toEqual(['clientId']);
+		expect(invoiceIdParam?.displayOptions?.show?.resource).toEqual(['client']);
+		expect(invoiceIdParam?.displayOptions?.show?.operation).toEqual(['sendReminder']);
+		expect(invoiceIdParam?.displayOptions?.hide?.clientId).toEqual(['']);
+		const listMode = invoiceIdParam?.modes?.find((m) => m.name === 'list');
+		expect(listMode).toBeDefined();
+		expect(listMode?.typeOptions?.searchListMethod).toBe('searchClientInvoices');
 	});
 
 	it('clientFields defines updateFields as resourceMapper and hides it until clientId is selected', () => {

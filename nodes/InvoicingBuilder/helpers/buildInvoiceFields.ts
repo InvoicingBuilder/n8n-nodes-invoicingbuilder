@@ -36,6 +36,7 @@ export interface BuiltInvoiceItem {
 	templateId: string;
 	format: 'pdf' | 'png';
 	externalId?: string;
+	clientId?: string;
 	clientEmail?: string;
 	clientName?: string;
 	fields: Record<string, unknown>;

@@ -388,6 +388,110 @@ describe('Pagination and Lazy Loading in Dynamic Dropdowns', () => {
 		});
 	});
 
+	describe('searchClientInvoices (Client Invoices Dropdown)', () => {
+		it('returns empty results if clientId is not provided or empty', async () => {
+			const mockContext = {
+				getCurrentNodeParameter: vi.fn().mockReturnValue(''),
+				getNodeParameter: vi.fn().mockReturnValue(''),
+				getCredentials: vi.fn().mockResolvedValue({
+					baseUrl: 'https://api.invoicingbuilder.com',
+				}),
+				helpers: {
+					httpRequestWithAuthentication: vi.fn(),
+				},
+			} as unknown as ILoadOptionsFunctions;
+
+			const result = await node.methods.listSearch.searchClientInvoices.call(
+				mockContext,
+				undefined,
+				undefined,
+			);
+
+			expect(result).toEqual({ results: [] });
+			expect(mockContext.helpers.httpRequestWithAuthentication).not.toHaveBeenCalled();
+		});
+
+		it('fetches invoices of the selected client with pagination and search', async () => {
+			let capturedUrl = '';
+			let capturedQs: Record<string, unknown> = {};
+
+			const fakeClientInvoices = Array.from({ length: 50 }, (_, i) => ({
+				id: `inv-c-${i + 1}`,
+				invoice: {
+					templateName: 'Client Retainer',
+					date: '2026-10-20T00:00:00.000Z',
+					balanceDue: '500.00',
+					currency: 'USD',
+					components: [
+						{
+							type: 'invoiceNumber',
+							properties: { text: `INV-C-${1000 + i}` },
+						},
+					],
+				},
+			}));
+
+			const mockContext = {
+				getCurrentNodeParameter: vi.fn().mockReturnValue({ mode: 'list', value: 'client-999' }),
+				getNodeParameter: vi.fn().mockReturnValue('client-999'),
+				getCredentials: vi.fn().mockResolvedValue({
+					baseUrl: 'https://api.invoicingbuilder.com',
+				}),
+				helpers: {
+					httpRequestWithAuthentication: vi.fn().mockImplementation(async (_cred, options) => {
+						capturedUrl = options.url;
+						capturedQs = options.qs;
+						return {
+							items: fakeClientInvoices,
+							total: 75,
+							page: 1,
+							limit: 50,
+							totalPages: 2,
+						};
+					}),
+				},
+			} as unknown as ILoadOptionsFunctions;
+
+			const result = await node.methods.listSearch.searchClientInvoices.call(
+				mockContext,
+				'Retainer',
+				undefined,
+			);
+
+			expect(capturedUrl).toContain('/api/v1/clients/client-999/invoices');
+			expect(capturedQs).toEqual({
+				page: 1,
+				limit: 50,
+				search: 'Retainer',
+			});
+			expect(result.results).toHaveLength(50);
+			expect(result.results[0].value).toBe('inv-c-1');
+			expect(result.results[0].name).toContain('INV-C-1000');
+			expect(result.paginationToken).toBe('2');
+		});
+
+		it('handles API errors gracefully in searchClientInvoices', async () => {
+			const mockContext = {
+				getCurrentNodeParameter: vi.fn().mockReturnValue('client-err'),
+				getNodeParameter: vi.fn().mockReturnValue('client-err'),
+				getCredentials: vi.fn().mockResolvedValue({
+					baseUrl: 'https://api.invoicingbuilder.com',
+				}),
+				helpers: {
+					httpRequestWithAuthentication: vi.fn().mockRejectedValue(new Error('Network error')),
+				},
+			} as unknown as ILoadOptionsFunctions;
+
+			const result = await node.methods.listSearch.searchClientInvoices.call(
+				mockContext,
+				undefined,
+				undefined,
+			);
+
+			expect(result).toEqual({ results: [] });
+		});
+	});
+
 	describe('helpers: resourceLocator extraction & deduplication', () => {
 		it('extracts string value from raw string, resource locator objects, and primitives', () => {
 			expect(extractResourceLocatorValue('tpl-123')).toBe('tpl-123');

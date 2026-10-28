@@ -19,6 +19,7 @@ import { getInvoices } from './methods/getInvoices';
 import { searchTemplates } from './methods/searchTemplates';
 import { searchClients } from './methods/searchClients';
 import { searchInvoices } from './methods/searchInvoices';
+import { searchClientInvoices } from './methods/searchClientInvoices';
 import { extractResourceLocatorValue } from './helpers/resourceLocator';
 import { apiRequest } from './helpers/request';
 import { groupRows } from './helpers/groupRows';
@@ -192,9 +193,11 @@ export class InvoicingBuilder implements INodeType {
 			searchTemplates,
 			searchClients,
 			searchInvoices,
+			searchClientInvoices,
 			getTemplates: searchTemplates,
 			getClients: searchClients,
 			getInvoices: searchInvoices,
+			getClientInvoices: searchClientInvoices,
 		},
 		resourceMapping: {
 			getClientUpdateFields,
@@ -393,10 +396,19 @@ export class InvoicingBuilder implements INodeType {
 							});
 						} else if (operation === 'sendReminder') {
 							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i));
+							const invoiceIdParam = this.getNodeParameter('invoiceId', i, '') as unknown;
+							const invoiceId = extractResourceLocatorValue(invoiceIdParam).trim();
+
+							const body: IDataObject = {};
+							if (invoiceId) {
+								body.invoiceId = invoiceId;
+							}
+
 							const response = (await apiRequest.call(
 								this,
 								'POST',
 								`/api/v1/clients/${clientId}/remind`,
+								body,
 							)) as IDataObject;
 
 							returnData.push({
@@ -703,6 +715,7 @@ export class InvoicingBuilder implements INodeType {
 									(items[i]?.json?.poNumber as string) ||
 									(items[i]?.json?.['PO Number'] as string) ||
 									undefined,
+								clientId: clientId || undefined,
 								clientName: resolvedClientName,
 								clientEmail: resolvedClientEmail,
 								billTo: resolvedBillTo,

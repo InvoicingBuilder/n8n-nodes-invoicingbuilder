@@ -239,4 +239,56 @@ export const clientFields: INodeProperties[] = [
 			},
 		},
 	},
+
+	// ----------------------------------
+	// Send Reminder Operation Fields
+	// ----------------------------------
+	{
+		displayName: 'Invoice Name or ID',
+		name: 'invoiceId',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
+		required: true,
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select an invoice...',
+				typeOptions: {
+					searchListMethod: 'searchClientInvoices',
+					searchable: true,
+				},
+			},
+			{
+				displayName: 'ID',
+				name: 'id',
+				type: 'string',
+				placeholder: 'e.g. 172823b3-ddf0-42db-9b70-7e0c22ce6db9',
+				validation: [
+					{
+						type: 'regex',
+						properties: {
+							regex: '[a-zA-Z0-9_-]+',
+							errorMessage: 'Not a valid ID',
+						},
+					},
+				],
+			},
+		],
+		typeOptions: {
+			loadOptionsDependsOn: ['clientId'],
+		},
+		displayOptions: {
+			show: {
+				resource: ['client'],
+				operation: ['sendReminder'],
+			},
+			hide: {
+				clientId: [''],
+			},
+		},
+		description:
+			'Choose an invoice belonging to the selected client, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+	},
 ];

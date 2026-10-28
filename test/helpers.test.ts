@@ -565,5 +565,20 @@ describe('buildDirectInvoice helper', () => {
 		expect(result.fields.f_logo).toBeUndefined();
 		expect(result.fields.f_sig).toBeUndefined();
 	});
+
+	it('preserves and maps clientId when provided in buildDirectInvoice', () => {
+		const result = buildDirectInvoice({
+			templateId: 'tmpl_client',
+			format: 'pdf',
+			clientId: 'client_xyz_789',
+			clientName: 'Client XYZ',
+			clientEmail: 'xyz@example.com',
+		});
+
+		expect(result.clientId).toBe('client_xyz_789');
+		expect(result.fields.clientId).toBe('client_xyz_789');
+		expect(result.clientName).toBe('Client XYZ');
+		expect(result.clientEmail).toBe('xyz@example.com');
+	});
 });
 
