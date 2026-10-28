@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InvoicingBuilder } from '../nodes/InvoicingBuilder/InvoicingBuilder.node';
 import { invoiceFields } from '../nodes/InvoicingBuilder/descriptions/InvoiceDescription';
+import { clientFields } from '../nodes/InvoicingBuilder/descriptions/ClientDescription';
 import {
 	type IDataObject,
 	type IExecuteFunctions,
 	type IHttpRequestOptions,
+	type ILoadOptionsFunctions,
 	type INode,
 	NodeOperationError,
 	NodeApiError,
@@ -13,6 +15,7 @@ import {
 interface MockContextOptions {
 	items?: Array<{ json: IDataObject }>;
 	parameters?: IDataObject;
+	itemParameters?: Array<IDataObject>;
 	credentials?: IDataObject;
 	continueOnFail?: boolean;
 	httpHandler?: (options: IHttpRequestOptions) => Promise<unknown>;
@@ -64,7 +67,13 @@ function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFun
 	const context = {
 		getInputData: vi.fn(() => items),
 		getNodeParameter: vi.fn((param: string, itemIndex = 0, defaultValue?: unknown) => {
-			void itemIndex;
+			if (
+				options.itemParameters &&
+				options.itemParameters[itemIndex] &&
+				param in options.itemParameters[itemIndex]
+			) {
+				return options.itemParameters[itemIndex][param];
+			}
 			if (param in params) {
 				return params[param];
 			}
@@ -1358,6 +1367,504 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 		expect(requestedUrl).toContain('/api/v1/clients/client_123/remind');
 		expect(result[0][0].json.success).toBe(true);
 	});
+
+	it('clientFields defines updateFields as resourceMapper and hides it until clientId is selected', () => {
+		const updateFieldsParam = clientFields.find((f) => f.name === 'updateFields');
+		expect(updateFieldsParam).toBeDefined();
+		expect(updateFieldsParam?.type).toBe('resourceMapper');
+		expect(updateFieldsParam?.typeOptions?.loadOptionsDependsOn).toEqual(['clientId']);
+		expect(updateFieldsParam?.typeOptions?.resourceMapper?.resourceMapperMethod).toBe('getClientUpdateFields');
+		expect(updateFieldsParam?.typeOptions?.resourceMapper?.addAllFields).toBe(true);
+		expect(updateFieldsParam?.typeOptions?.resourceMapper?.supportAutoMap).toBe(false);
+		expect(updateFieldsParam?.typeOptions?.resourceMapper?.valuesLabel).toBe('Client Details');
+		expect(updateFieldsParam?.displayOptions?.hide?.clientId).toEqual(['']);
+	});
+
+	it('getClientUpdateFields fetches client details and populates defaultValues for Name, Email, Bill To, and Ship To', async () => {
+		const mockLoadContext = {
+			getCurrentNodeParameter: vi.fn((param: string) => (param === 'clientId' ? 'client_123' : undefined)),
+			getNodeParameter: vi.fn((param: string, fallback?: unknown) => (param === 'clientId' ? 'client_123' : fallback)),
+			getCredentials: vi.fn(async () => ({
+				apiKey: 'ib_test_secret',
+				baseUrl: 'https://api.invoicingbuilder.com',
+			})),
+			helpers: {
+				httpRequestWithAuthentication: vi.fn(async () => ({
+					id: 'client_123',
+					name: 'Team Holland',
+					email: 'teamram61@gmail.com',
+					billTo: 'Psi Solutions, 1010 23rd St, New York, NY 10023',
+					shipTo: 'Chi Enterprises, 909 22nd St, New York, NY 10022',
+				})),
+			},
+		};
+
+		const result = await node.methods.resourceMapping.getClientUpdateFields.call(
+			mockLoadContext as unknown as ILoadOptionsFunctions,
+		);
+
+		expect(result.fields).toEqual([
+			{
+				id: 'name',
+				displayName: 'Name',
+				required: false,
+				display: true,
+				type: 'string',
+				defaultMatch: false,
+				canBeUsedToMatch: false,
+				defaultValue: 'Team Holland',
+			},
+			{
+				id: 'email',
+				displayName: 'Email',
+				required: false,
+				display: true,
+				type: 'string',
+				defaultMatch: false,
+				canBeUsedToMatch: false,
+				defaultValue: 'teamram61@gmail.com',
+			},
+			{
+				id: 'billTo',
+				displayName: 'Bill To',
+				required: false,
+				display: true,
+				type: 'string',
+				defaultMatch: false,
+				canBeUsedToMatch: false,
+				defaultValue: 'Psi Solutions, 1010 23rd St, New York, NY 10023',
+			},
+			{
+				id: 'shipTo',
+				displayName: 'Ship To',
+				required: false,
+				display: true,
+				type: 'string',
+				defaultMatch: false,
+				canBeUsedToMatch: false,
+				defaultValue: 'Chi Enterprises, 909 22nd St, New York, NY 10022',
+			},
+		]);
+	});
+
+	it('getClientUpdateFields returns empty fields array when clientId is empty or missing', async () => {
+		const mockLoadContext = {
+			getCurrentNodeParameter: vi.fn(() => ''),
+			getNodeParameter: vi.fn(() => ''),
+		};
+
+		const result = await node.methods.resourceMapping.getClientUpdateFields.call(
+			mockLoadContext as unknown as ILoadOptionsFunctions,
+		);
+
+		expect(result).toEqual({ fields: [] });
+	});
+
+	it('getClients loads clients with name, email, billTo, and shipTo in description', async () => {
+		const mockLoadContext = {
+			getCredentials: vi.fn(async () => ({
+				apiKey: 'ib_test_secret',
+				baseUrl: 'https://api.invoicingbuilder.com',
+			})),
+			helpers: {
+				httpRequestWithAuthentication: vi.fn(async () => [
+					{
+						id: 'client_1',
+						name: 'Acme Corp',
+						email: 'billing@acme.com',
+						billTo: '123 Market St\nSan Francisco, CA',
+						shipTo: '789 Warehouse Rd\nSan Francisco, CA',
+					},
+					{
+						id: 'client_2',
+						name: 'Solo Client',
+					},
+				]),
+			},
+		};
+
+		const options = await node.methods.loadOptions.getClients.call(
+			mockLoadContext as unknown as ILoadOptionsFunctions,
+		);
+		expect(options).toEqual([
+			{
+				name: 'Acme Corp (billing@acme.com)',
+				value: 'client_1',
+				description: 'Bill: 123 Market St, San Francisco, CA | Ship: 789 Warehouse Rd, San Francisco, CA',
+			},
+			{
+				name: 'Solo Client',
+				value: 'client_2',
+				description: undefined,
+			},
+		]);
+	});
+
+	it('updates only the Name field, leaving email, billTo, shipTo unchanged and not sent as empty strings', async () => {
+		let capturedPutBody: IDataObject | undefined;
+		let getCalled = false;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_123',
+				name: 'Acme Corporation Updated',
+				email: '',
+				billTo: '',
+				shipTo: '',
+			},
+			httpHandler: async (opts) => {
+				if (opts.method === 'GET' && opts.url?.includes('/api/v1/clients/client_123')) {
+					getCalled = true;
+					return {
+						id: 'client_123',
+						name: 'Acme Corporation',
+						email: 'billing@acme.com',
+						billTo: '123 Market St',
+						shipTo: '789 Warehouse Rd',
+					};
+				}
+				if (opts.method === 'PUT' && opts.url?.includes('/api/v1/clients/client_123')) {
+					capturedPutBody = opts.body as IDataObject;
+					return {
+						id: 'client_123',
+						name: 'Acme Corporation Updated',
+						email: 'billing@acme.com',
+						billTo: '123 Market St',
+						shipTo: '789 Warehouse Rd',
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(getCalled).toBe(true);
+		expect(capturedPutBody).toEqual({
+			name: 'Acme Corporation Updated',
+		});
+		expect(result[0][0].json.name).toBe('Acme Corporation Updated');
+		expect(result[0][0].json.email).toBe('billing@acme.com');
+	});
+
+	it('updates only Bill To independently without affecting Ship To or other fields', async () => {
+		let capturedPutBody: IDataObject | undefined;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_123',
+				name: '',
+				email: '',
+				billTo: '456 New Billing Ave\nNew York, NY 10001',
+				shipTo: '',
+			},
+			httpHandler: async (opts) => {
+				if (opts.method === 'GET' && opts.url?.includes('/api/v1/clients/client_123')) {
+					return {
+						id: 'client_123',
+						name: 'Wayne Enterprises',
+						email: 'bruce@wayne.com',
+						billTo: 'Old Billing Address',
+						shipTo: '100 Gotham Pier',
+					};
+				}
+				if (opts.method === 'PUT' && opts.url?.includes('/api/v1/clients/client_123')) {
+					capturedPutBody = opts.body as IDataObject;
+					return {
+						id: 'client_123',
+						name: 'Wayne Enterprises',
+						email: 'bruce@wayne.com',
+						billTo: '456 New Billing Ave\nNew York, NY 10001',
+						shipTo: '100 Gotham Pier',
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedPutBody).toEqual({
+			billTo: '456 New Billing Ave\nNew York, NY 10001',
+		});
+		expect(result[0][0].json.billTo).toBe('456 New Billing Ave\nNew York, NY 10001');
+		expect(result[0][0].json.shipTo).toBe('100 Gotham Pier');
+	});
+
+	it('updates only Ship To independently without affecting Bill To or other fields', async () => {
+		let capturedPutBody: IDataObject | undefined;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_123',
+				name: '',
+				email: '',
+				billTo: '',
+				shipTo: '789 Logistics Way\nDock 4, Seattle, WA',
+			},
+			httpHandler: async (opts) => {
+				if (opts.method === 'GET' && opts.url?.includes('/api/v1/clients/client_123')) {
+					return {
+						id: 'client_123',
+						name: 'Wayne Enterprises',
+						email: 'bruce@wayne.com',
+						billTo: '456 Billing Ave',
+						shipTo: 'Old Shipping Address',
+					};
+				}
+				if (opts.method === 'PUT' && opts.url?.includes('/api/v1/clients/client_123')) {
+					capturedPutBody = opts.body as IDataObject;
+					return {
+						id: 'client_123',
+						name: 'Wayne Enterprises',
+						email: 'bruce@wayne.com',
+						billTo: '456 Billing Ave',
+						shipTo: '789 Logistics Way\nDock 4, Seattle, WA',
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedPutBody).toEqual({
+			shipTo: '789 Logistics Way\nDock 4, Seattle, WA',
+		});
+		expect(result[0][0].json.shipTo).toBe('789 Logistics Way\nDock 4, Seattle, WA');
+		expect(result[0][0].json.billTo).toBe('456 Billing Ave');
+	});
+
+	it('supports dynamic expressions for Name, Email, Bill To, and Ship To', async () => {
+		let capturedPutBody: IDataObject | undefined;
+
+		// In n8n execution, expressions are evaluated into the parameter values for the item
+		const context = createMockExecuteContext({
+			items: [
+				{
+					json: {
+						name: 'Dynamic Corp',
+						email: 'dynamic@corp.com',
+						billTo: '100 Dynamic St',
+						shipTo: '200 Express Way',
+					},
+				},
+			],
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_dynamic_1',
+				name: 'Dynamic Corp',
+				email: 'dynamic@corp.com',
+				billTo: '100 Dynamic St',
+				shipTo: '200 Express Way',
+			},
+			httpHandler: async (opts) => {
+				if (opts.method === 'GET' && opts.url?.includes('/api/v1/clients/client_dynamic_1')) {
+					return {
+						id: 'client_dynamic_1',
+						name: 'Old Corp',
+						email: 'old@corp.com',
+						billTo: 'Old Bill',
+						shipTo: 'Old Ship',
+					};
+				}
+				if (opts.method === 'PUT' && opts.url?.includes('/api/v1/clients/client_dynamic_1')) {
+					capturedPutBody = opts.body as IDataObject;
+					return {
+						id: 'client_dynamic_1',
+						...(opts.body as IDataObject),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedPutBody).toEqual({
+			name: 'Dynamic Corp',
+			email: 'dynamic@corp.com',
+			billTo: '100 Dynamic St',
+			shipTo: '200 Express Way',
+		});
+		expect(result[0][0].json.name).toBe('Dynamic Corp');
+		expect(result[0][0].json.email).toBe('dynamic@corp.com');
+	});
+
+	it('updates client fields provided via updateFields resourceMapper', async () => {
+		let capturedPutBody: IDataObject | undefined;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_rm_1',
+				updateFields: {
+					mappingMode: 'defineBelow',
+					value: {
+						name: 'Updated RM Name',
+						email: 'billing@rm.com',
+						billTo: '123 Market St',
+						shipTo: 'New RM Ship To 999',
+					},
+				},
+			},
+			httpHandler: async (opts) => {
+				if (opts.method === 'GET' && opts.url?.includes('/api/v1/clients/client_rm_1')) {
+					return {
+						id: 'client_rm_1',
+						name: 'Original RM Name',
+						email: 'billing@rm.com',
+						billTo: '123 Market St',
+						shipTo: 'Old RM Ship To',
+					};
+				}
+				if (opts.method === 'PUT' && opts.url?.includes('/api/v1/clients/client_rm_1')) {
+					capturedPutBody = opts.body as IDataObject;
+					return {
+						id: 'client_rm_1',
+						...(opts.body as IDataObject),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedPutBody).toEqual({
+			name: 'Updated RM Name',
+			shipTo: 'New RM Ship To 999',
+		});
+		expect(result[0][0].json.name).toBe('Updated RM Name');
+	});
+
+	it('does not send PUT request when all fields are unmodified', async () => {
+		let putCalled = false;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_123',
+				name: 'Acme Corporation',
+				email: 'billing@acme.com',
+				billTo: '',
+				shipTo: '',
+			},
+			httpHandler: async (opts) => {
+				if (opts.method === 'GET' && opts.url?.includes('/api/v1/clients/client_123')) {
+					return {
+						id: 'client_123',
+						name: 'Acme Corporation',
+						email: 'billing@acme.com',
+						billTo: '123 Market St',
+						shipTo: '789 Warehouse Rd',
+					};
+				}
+				if (opts.method === 'PUT') {
+					putCalled = true;
+					return {};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(putCalled).toBe(false);
+		expect(result[0][0].json.id).toBe('client_123');
+		expect(result[0][0].json.name).toBe('Acme Corporation');
+	});
+
+	it('bulk workflows: correctly processes multiple clients with individual updates', async () => {
+		const putCalls: Array<{ url: string; body: IDataObject }> = [];
+
+		const context = createMockExecuteContext({
+			items: [
+				{ json: { id: 'client_A', name: 'New Client A' } },
+				{ json: { id: 'client_B', email: 'b_new@client.com' } },
+			],
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+			},
+			itemParameters: [
+				{
+					clientId: 'client_A',
+					name: 'New Client A',
+					email: '',
+					billTo: '',
+					shipTo: '',
+				},
+				{
+					clientId: 'client_B',
+					name: '',
+					email: 'b_new@client.com',
+					billTo: '',
+					shipTo: '',
+				},
+			],
+			httpHandler: async (opts) => {
+				if (opts.method === 'GET') {
+					if (opts.url?.includes('/api/v1/clients/client_A')) {
+						return { id: 'client_A', name: 'Old Client A', email: 'a@old.com' };
+					}
+					if (opts.url?.includes('/api/v1/clients/client_B')) {
+						return { id: 'client_B', name: 'Old Client B', email: 'b@old.com' };
+					}
+				}
+				if (opts.method === 'PUT') {
+					putCalls.push({ url: opts.url || '', body: opts.body as IDataObject });
+					return { id: opts.url?.split('/').pop(), ...(opts.body as IDataObject) };
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0]).toHaveLength(2);
+		expect(result[0][0].pairedItem).toEqual({ item: 0 });
+		expect(result[0][1].pairedItem).toEqual({ item: 1 });
+
+		expect(putCalls).toHaveLength(2);
+		expect(putCalls[0].url).toContain('/api/v1/clients/client_A');
+		expect(putCalls[0].body).toEqual({ name: 'New Client A' });
+		expect(putCalls[1].url).toContain('/api/v1/clients/client_B');
+		expect(putCalls[1].body).toEqual({ email: 'b_new@client.com' });
+	});
+
+	it('safely handles missing clientId with NodeOperationError', async () => {
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: '',
+			},
+		});
+
+		await expect(node.execute.call(context)).rejects.toThrow(NodeOperationError);
+	});
+
+	it('safely handles API errors and respects continueOnFail', async () => {
+		const context = createMockExecuteContext({
+			parameters: {
+				resource: 'client',
+				operation: 'update',
+				clientId: 'client_error',
+				name: 'Will Fail',
+			},
+			continueOnFail: true,
+			httpHandler: async () => {
+				throw new Error('Client not found or server error');
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0][0].json).toEqual({
+			error: 'Client not found or server error',
+		});
+		expect(result[0][0].pairedItem).toEqual({ item: 0 });
+	});
 });
-
-

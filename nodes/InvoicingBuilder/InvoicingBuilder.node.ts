@@ -14,6 +14,7 @@ import { reportFields, reportOperations } from './descriptions/ReportDescription
 import { trendFields } from './descriptions/TrendDescription';
 import { getTemplates } from './methods/getTemplates';
 import { getClients } from './methods/getClients';
+import { getClientUpdateFields } from './methods/getClientUpdateFields';
 import { apiRequest } from './helpers/request';
 import { groupRows } from './helpers/groupRows';
 import {
@@ -181,6 +182,9 @@ export class InvoicingBuilder implements INodeType {
 			getTemplates,
 			getClients,
 		},
+		resourceMapping: {
+			getClientUpdateFields,
+		},
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -205,42 +209,6 @@ export class InvoicingBuilder implements INodeType {
 
 			// Handle Client Resource
 			if (resource === 'client') {
-				if (operation === 'create') {
-					const name = this.getNodeParameter('name', 0) as string;
-					const email = this.getNodeParameter('email', 0, '') as string;
-					const billTo = this.getNodeParameter('billTo', 0, '') as string;
-					const shipTo = this.getNodeParameter('shipTo', 0, '') as string;
-
-					const body: IDataObject = { name };
-					if (email) body.email = email;
-					if (billTo) body.billTo = billTo;
-					if (shipTo) body.shipTo = shipTo;
-
-					const response = (await apiRequest.call(
-						this,
-						'POST',
-						'/api/v1/clients',
-						body,
-					)) as IDataObject;
-
-					const pairedItem =
-						items.length > 0 ? items.map((_, i) => ({ item: i })) : [{ item: 0 }];
-					return [[{ json: response, pairedItem }]];
-				}
-
-				if (operation === 'get') {
-					const clientId = this.getNodeParameter('clientId', 0) as string;
-					const response = (await apiRequest.call(
-						this,
-						'GET',
-						`/api/v1/clients/${clientId}`,
-					)) as IDataObject;
-
-					const pairedItem =
-						items.length > 0 ? items.map((_, i) => ({ item: i })) : [{ item: 0 }];
-					return [[{ json: response, pairedItem }]];
-				}
-
 				if (operation === 'getAll') {
 					const returnAll = this.getNodeParameter('returnAll', 0, true) as boolean;
 					const limit = this.getNodeParameter('limit', 0, 50) as number;
@@ -256,55 +224,195 @@ export class InvoicingBuilder implements INodeType {
 						clients = clients.slice(0, limit);
 					}
 
-					const returnItems: INodeExecutionData[] = clients.map((client, index) => ({
-						json: client,
-						pairedItem: { item: index },
-					}));
+					const returnItems: INodeExecutionData[] = clients.map((client, index) => {
+						const clientJson = { ...client };
+						delete clientJson.reminderSchedule;
+						return {
+							json: clientJson,
+							pairedItem: { item: index },
+						};
+					});
 
 					return [returnItems];
 				}
 
-				if (operation === 'update') {
-					const clientId = this.getNodeParameter('clientId', 0) as string;
-					const updateFields = this.getNodeParameter('updateFields', 0, {}) as IDataObject;
+				const numItems = items.length > 0 ? items.length : 1;
+				const returnData: INodeExecutionData[] = [];
 
-					const response = (await apiRequest.call(
-						this,
-						'PUT',
-						`/api/v1/clients/${clientId}`,
-						updateFields,
-					)) as IDataObject;
+				for (let i = 0; i < numItems; i++) {
+					try {
+						if (operation === 'create') {
+							const name = this.getNodeParameter('name', i) as string;
+							const email = this.getNodeParameter('email', i, '') as string;
+							const billTo = this.getNodeParameter('billTo', i, '') as string;
+							const shipTo = this.getNodeParameter('shipTo', i, '') as string;
 
-					const pairedItem =
-						items.length > 0 ? items.map((_, i) => ({ item: i })) : [{ item: 0 }];
-					return [[{ json: response, pairedItem }]];
+							const body: IDataObject = { name };
+							if (email) body.email = email;
+							if (billTo) body.billTo = billTo;
+							if (shipTo) body.shipTo = shipTo;
+
+							const response = (await apiRequest.call(
+								this,
+								'POST',
+								'/api/v1/clients',
+								body,
+							)) as IDataObject;
+
+							const clientJson = { ...response };
+							delete clientJson.reminderSchedule;
+
+							returnData.push({
+								json: clientJson,
+								pairedItem: { item: i },
+							});
+						} else if (operation === 'get') {
+							const clientId = this.getNodeParameter('clientId', i) as string;
+							const response = (await apiRequest.call(
+								this,
+								'GET',
+								`/api/v1/clients/${clientId}`,
+							)) as IDataObject;
+
+							const clientJson = { ...response };
+							delete clientJson.reminderSchedule;
+
+							returnData.push({
+								json: clientJson,
+								pairedItem: { item: i },
+							});
+						} else if (operation === 'update') {
+							const clientId = this.getNodeParameter('clientId', i, '') as string;
+							if (!clientId) {
+								throw new NodeOperationError(
+									this.getNode(),
+									'Client Name or ID is required to update a client.',
+									{ itemIndex: i },
+								);
+							}
+
+							const currentClient = (await apiRequest.call(
+								this,
+								'GET',
+								`/api/v1/clients/${clientId}`,
+							)) as IDataObject;
+
+							const name = this.getNodeParameter('name', i, '') as string;
+							const email = this.getNodeParameter('email', i, '') as string;
+							const billTo = this.getNodeParameter('billTo', i, '') as string;
+							const shipTo = this.getNodeParameter('shipTo', i, '') as string;
+
+							let updateFields: IDataObject = {};
+							try {
+								const rawUpdate = this.getNodeParameter('updateFields', i, {}) as
+									| { value?: IDataObject }
+									| IDataObject;
+								if (rawUpdate && typeof rawUpdate === 'object') {
+									if ('value' in rawUpdate && rawUpdate.value && typeof rawUpdate.value === 'object') {
+										updateFields = rawUpdate.value as IDataObject;
+									} else {
+										updateFields = rawUpdate as IDataObject;
+									}
+								}
+							} catch {
+								updateFields = {};
+							}
+
+							const updatePayload: IDataObject = {};
+
+							const applyField = (
+								fieldName: string,
+								directVal: unknown,
+								collectionVal: unknown,
+								currentVal: unknown,
+							) => {
+								const normalizedCurrent = (currentVal ?? '') as string;
+								if (collectionVal !== undefined && collectionVal !== null) {
+									const strVal = String(collectionVal).trim();
+									if (strVal !== normalizedCurrent) {
+										updatePayload[fieldName] = strVal;
+									}
+									return;
+								}
+								if (typeof directVal === 'string' && directVal.trim() !== '') {
+									if (directVal.trim() !== normalizedCurrent) {
+										updatePayload[fieldName] = directVal.trim();
+									}
+								}
+							};
+
+							applyField('name', name, updateFields.name, currentClient?.name);
+							applyField('email', email, updateFields.email, currentClient?.email);
+							applyField('billTo', billTo, updateFields.billTo, currentClient?.billTo);
+							applyField('shipTo', shipTo, updateFields.shipTo, currentClient?.shipTo);
+
+							let responseData: IDataObject;
+							if (Object.keys(updatePayload).length > 0) {
+								responseData = (await apiRequest.call(
+									this,
+									'PUT',
+									`/api/v1/clients/${clientId}`,
+									updatePayload,
+								)) as IDataObject;
+							} else {
+								responseData = currentClient;
+							}
+
+							const clientJson = { ...responseData };
+							delete clientJson.reminderSchedule;
+
+							returnData.push({
+								json: clientJson,
+								pairedItem: { item: i },
+							});
+						} else if (operation === 'delete') {
+							const clientId = this.getNodeParameter('clientId', i) as string;
+							const response = (await apiRequest.call(
+								this,
+								'DELETE',
+								`/api/v1/clients/${clientId}`,
+							)) as IDataObject;
+
+							returnData.push({
+								json: response,
+								pairedItem: { item: i },
+							});
+						} else if (operation === 'sendReminder') {
+							const clientId = this.getNodeParameter('clientId', i) as string;
+							const response = (await apiRequest.call(
+								this,
+								'POST',
+								`/api/v1/clients/${clientId}/remind`,
+							)) as IDataObject;
+
+							returnData.push({
+								json: response,
+								pairedItem: { item: i },
+							});
+						}
+					} catch (error) {
+						if (this.continueOnFail()) {
+							returnData.push({
+								json: {
+									error: (error as Error).message,
+								},
+								pairedItem: { item: i },
+							});
+							continue;
+						}
+						if (error instanceof NodeOperationError) {
+							throw new NodeOperationError(this.getNode(), error, { itemIndex: i });
+						}
+						const formatted = formatApiError(error);
+						throw new NodeApiError(this.getNode(), formatted.response, {
+							message: formatted.message,
+							httpCode: formatted.httpCode,
+							itemIndex: i,
+						});
+					}
 				}
 
-				if (operation === 'delete') {
-					const clientId = this.getNodeParameter('clientId', 0) as string;
-					const response = (await apiRequest.call(
-						this,
-						'DELETE',
-						`/api/v1/clients/${clientId}`,
-					)) as IDataObject;
-
-					const pairedItem =
-						items.length > 0 ? items.map((_, i) => ({ item: i })) : [{ item: 0 }];
-					return [[{ json: response, pairedItem }]];
-				}
-
-				if (operation === 'sendReminder') {
-					const clientId = this.getNodeParameter('clientId', 0) as string;
-					const response = (await apiRequest.call(
-						this,
-						'POST',
-						`/api/v1/clients/${clientId}/remind`,
-					)) as IDataObject;
-
-					const pairedItem =
-						items.length > 0 ? items.map((_, i) => ({ item: i })) : [{ item: 0 }];
-					return [[{ json: response, pairedItem }]];
-				}
+				return [returnData];
 			}
 
 			// Handle Invoice Resource

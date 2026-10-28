@@ -183,47 +183,36 @@ export const clientFields: INodeProperties[] = [
 	{
 		displayName: 'Update Fields',
 		name: 'updateFields',
-		type: 'collection',
-		placeholder: 'Add Field',
-		default: {},
+		type: 'resourceMapper',
+		noDataExpression: true,
+		default: {
+			mappingMode: 'defineBelow',
+			value: null,
+		},
+		required: true,
+		typeOptions: {
+			loadOptionsDependsOn: ['clientId'],
+			resourceMapper: {
+				resourceMapperMethod: 'getClientUpdateFields',
+				mode: 'add',
+				valuesLabel: 'Client Details',
+				fieldWords: {
+					singular: 'field',
+					plural: 'fields',
+				},
+				addAllFields: true,
+				multiKeyMatch: false,
+				supportAutoMap: false,
+			},
+		},
 		displayOptions: {
 			show: {
 				resource: ['client'],
 				operation: ['update'],
 			},
+			hide: {
+				clientId: [''],
+			},
 		},
-		options: [
-			{
-				displayName: 'Bill To',
-				name: 'billTo',
-				type: 'string',
-				typeOptions: { rows: 3 },
-				default: '',
-				description: 'Updated billing address',
-			},
-			{
-				displayName: 'Email',
-				name: 'email',
-				type: 'string',
-				default: '',
-				placeholder: 'name@email.com',
-				description: 'Updated billing email address',
-			},
-			{
-				displayName: 'Name',
-				name: 'name',
-				type: 'string',
-				default: '',
-				description: 'Updated client name',
-			},
-			{
-				displayName: 'Ship To',
-				name: 'shipTo',
-				type: 'string',
-				typeOptions: { rows: 3 },
-				default: '',
-				description: 'Updated shipping address',
-			},
-		],
 	},
 ];

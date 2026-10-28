@@ -5,6 +5,8 @@ interface ClientItem {
 	id: string;
 	name: string;
 	email?: string;
+	billTo?: string;
+	shipTo?: string;
 }
 
 /**
@@ -27,9 +29,18 @@ export async function getClients(
 				? `${client.name} (${client.email})`
 				: client.name || client.id;
 
+			const details: string[] = [];
+			if (client.billTo) {
+				details.push(`Bill: ${client.billTo.replace(/\r?\n/g, ', ')}`);
+			}
+			if (client.shipTo) {
+				details.push(`Ship: ${client.shipTo.replace(/\r?\n/g, ', ')}`);
+			}
+
 			returnData.push({
 				name: displayName,
 				value: client.id,
+				description: details.length > 0 ? details.join(' | ') : undefined,
 			});
 		}
 	}
