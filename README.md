@@ -80,7 +80,6 @@ Fetches aggregate invoice metrics and zero-filled monthly breakdowns grouped by 
 - **Date Basis**: `Issue Date` (default) or `Created At`.
 - **From / To**: Optional UTC date range (`YYYY-MM-DD`). The node validates that `From <= To`.
 - **Status**: Filter by invoice status (`All`, `Paid`, `Unpaid`, `Overdue`).
-- **Currency**: Optional ISO 4217 currency code (e.g. `USD`, `EUR`).
 - **Send to User**: Optional boolean (default: `false`). When enabled, automatically emails the summary report to the current authenticated user in the background without blocking node execution.
 
 #### Output

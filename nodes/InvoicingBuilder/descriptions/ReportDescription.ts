@@ -82,19 +82,6 @@ export const reportFields: INodeProperties[] = [
 		description: 'Invoice status filter',
 	},
 	{
-		displayName: 'Currency',
-		name: 'currency',
-		type: 'string',
-		default: '',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['generateReport'],
-			},
-		},
-		description: 'Optional ISO currency code filter (e.g. USD, EUR)',
-	},
-	{
 		displayName: 'Send to User',
 		name: 'sendToUser',
 		type: 'boolean',

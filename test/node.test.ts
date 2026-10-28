@@ -170,7 +170,7 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 					};
 				}
 				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					capturedCreateBody = opts.body;
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
 					return {
 						statusCode: 200,
 						headers: {
@@ -197,7 +197,7 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 
 		// Verify Requirement 3: Template Clearing & Spreadsheet Mapping
 		expect(capturedCreateBody).not.toBeNull();
-		const invoice = capturedCreateBody.invoices[0];
+		const invoice = capturedCreateBody!.invoices[0];
 		expect(invoice.fields.comp_billto).toBe('XYZ Company');
 		expect(invoice.fields.comp_email).toBe('xyz@example.com');
 		// comp_notes was not in spreadsheet, so it is cleared to '' rather than retaining 'Old template notes'
@@ -235,7 +235,7 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 					};
 				}
 				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					capturedCreateBody = opts.body;
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
 					return {
 						statusCode: 200,
 						headers: {
@@ -693,6 +693,7 @@ describe('InvoicingBuilder Generate Report Operation (Regression Tests)', () => 
 
 		const result = await node.execute.call(context);
 		expect(capturedQs?.sendToUser).toBe(true);
+		expect(capturedQs?.currency).toBeUndefined();
 		expect(result[0][0].json.sendToUser).toBe(true);
 	});
 

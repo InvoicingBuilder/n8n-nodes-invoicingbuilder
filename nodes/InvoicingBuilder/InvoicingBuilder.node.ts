@@ -239,7 +239,6 @@ export class InvoicingBuilder implements INodeType {
 					const fromRaw = this.getNodeParameter('from', 0, '') as string;
 					const toRaw = this.getNodeParameter('to', 0, '') as string;
 					const status = this.getNodeParameter('status', 0, 'all') as string;
-					const currency = this.getNodeParameter('currency', 0, '') as string;
 					const sendToUser = this.getNodeParameter('sendToUser', 0, false) as boolean;
 
 					const from = fromRaw ? fromRaw.split('T')[0] : undefined;
@@ -258,7 +257,6 @@ export class InvoicingBuilder implements INodeType {
 					};
 					if (from) qs.from = from;
 					if (to) qs.to = to;
-					if (currency?.trim()) qs.currency = currency.trim();
 					if (sendToUser) qs.sendToUser = true;
 
 					const response = (await apiRequest.call(
