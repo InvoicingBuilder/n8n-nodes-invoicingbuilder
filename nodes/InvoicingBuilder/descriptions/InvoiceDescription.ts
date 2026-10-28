@@ -18,6 +18,18 @@ export const invoiceOperations: INodeProperties[] = [
 				description: 'Create an invoice (PDF or PNG) from a Google Sheet or direct data',
 				action: 'Create an invoice',
 			},
+			{
+				name: 'Download',
+				value: 'download',
+				description: 'Download a past invoice as a PDF or PNG file',
+				action: 'Download an invoice',
+			},
+			{
+				name: 'Get',
+				value: 'get',
+				description: 'Get details of an invoice by ID',
+				action: 'Get an invoice',
+			},
 		],
 		default: 'create',
 	},
@@ -30,12 +42,36 @@ export const invoiceFields: INodeProperties[] = [
 	{
 		displayName: 'Template Name or ID',
 		name: 'templateId',
-		type: 'options',
-		typeOptions: {
-			loadOptionsMethod: 'getTemplates',
-		},
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		required: true,
-		default: '',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select a template...',
+				typeOptions: {
+					searchListMethod: 'searchTemplates',
+					searchable: true,
+				},
+			},
+			{
+				displayName: 'ID',
+				name: 'id',
+				type: 'string',
+				placeholder: 'e.g. 6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+				validation: [
+					{
+						type: 'regex',
+						properties: {
+							regex: '[a-zA-Z0-9_-]+',
+							errorMessage: 'Not a valid ID',
+						},
+					},
+				],
+			},
+		],
 		displayOptions: {
 			show: {
 				resource: ['invoice'],
@@ -116,12 +152,36 @@ export const invoiceFields: INodeProperties[] = [
 	{
 		displayName: 'Client Name or ID',
 		name: 'clientId',
-		type: 'options',
-		typeOptions: {
-			loadOptionsMethod: 'getClients',
-		},
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		required: true,
-		default: '',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select a client...',
+				typeOptions: {
+					searchListMethod: 'searchClients',
+					searchable: true,
+				},
+			},
+			{
+				displayName: 'ID',
+				name: 'id',
+				type: 'string',
+				placeholder: 'e.g. 6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+				validation: [
+					{
+						type: 'regex',
+						properties: {
+							regex: '[a-zA-Z0-9_-]+',
+							errorMessage: 'Not a valid ID',
+						},
+					},
+				],
+			},
+		],
 		displayOptions: {
 			show: {
 				resource: ['invoice'],
@@ -363,5 +423,80 @@ export const invoiceFields: INodeProperties[] = [
 			},
 		},
 		description: 'Whether to email the generated invoice to the client email',
+	},
+
+	// ----------------------------------
+	// Invoice Selection (get, download)
+	// ----------------------------------
+	{
+		displayName: 'Invoice Name or ID',
+		name: 'invoiceId',
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
+		required: true,
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select an invoice...',
+				typeOptions: {
+					searchListMethod: 'searchInvoices',
+					searchable: true,
+				},
+			},
+			{
+				displayName: 'ID',
+				name: 'id',
+				type: 'string',
+				placeholder: 'e.g. 6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+				validation: [
+					{
+						type: 'regex',
+						properties: {
+							regex: '[a-zA-Z0-9_-]+',
+							errorMessage: 'Not a valid ID',
+						},
+					},
+				],
+			},
+		],
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['get', 'download'],
+			},
+		},
+		description:
+			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+	},
+
+	// ----------------------------------
+	// Invoice Download Options
+	// ----------------------------------
+	{
+		displayName: 'Download Format',
+		name: 'downloadFormat',
+		type: 'options',
+		options: [
+			{
+				name: 'PDF',
+				value: 'pdf',
+				description: 'Portable Document Format (.pdf)',
+			},
+			{
+				name: 'PNG',
+				value: 'png',
+				description: 'Portable Network Graphics image (.png)',
+			},
+		],
+		default: 'pdf',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['download'],
+			},
+		},
+		description: 'The file format of the downloaded invoice',
 	},
 ];

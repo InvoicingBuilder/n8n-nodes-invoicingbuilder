@@ -60,12 +60,36 @@ export const clientFields: INodeProperties[] = [
 	{
 		displayName: 'Client Name or ID',
 		name: 'clientId',
-		type: 'options',
-		typeOptions: {
-			loadOptionsMethod: 'getClients',
-		},
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
 		required: true,
-		default: '',
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				placeholder: 'Select a client...',
+				typeOptions: {
+					searchListMethod: 'searchClients',
+					searchable: true,
+				},
+			},
+			{
+				displayName: 'ID',
+				name: 'id',
+				type: 'string',
+				placeholder: 'e.g. 6ba7b810-9dad-11d1-80b4-00c04fd430c8',
+				validation: [
+					{
+						type: 'regex',
+						properties: {
+							regex: '[a-zA-Z0-9_-]+',
+							errorMessage: 'Not a valid ID',
+						},
+					},
+				],
+			},
+		],
 		displayOptions: {
 			show: {
 				resource: ['client'],

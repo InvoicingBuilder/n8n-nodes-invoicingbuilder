@@ -1,5 +1,6 @@
 import type { ILoadOptionsFunctions, ResourceMapperFields } from 'n8n-workflow';
 import { apiRequest } from '../helpers/request';
+import { extractResourceLocatorValue } from '../helpers/resourceLocator';
 
 interface ClientItem {
 	id: string;
@@ -31,15 +32,7 @@ export async function getClientUpdateFields(
 		}
 	}
 
-	if (typeof clientId === 'object' && clientId !== null && 'value' in clientId) {
-		clientId = (clientId as { value?: string }).value;
-	}
-
-	if (!clientId || typeof clientId !== 'string') {
-		return { fields: [] };
-	}
-
-	const trimmedId = clientId.trim();
+	const trimmedId = extractResourceLocatorValue(clientId).trim();
 	if (!trimmedId) {
 		return { fields: [] };
 	}

@@ -15,6 +15,11 @@ import { trendFields } from './descriptions/TrendDescription';
 import { getTemplates } from './methods/getTemplates';
 import { getClients } from './methods/getClients';
 import { getClientUpdateFields } from './methods/getClientUpdateFields';
+import { getInvoices } from './methods/getInvoices';
+import { searchTemplates } from './methods/searchTemplates';
+import { searchClients } from './methods/searchClients';
+import { searchInvoices } from './methods/searchInvoices';
+import { extractResourceLocatorValue } from './helpers/resourceLocator';
 import { apiRequest } from './helpers/request';
 import { groupRows } from './helpers/groupRows';
 import {
@@ -181,6 +186,15 @@ export class InvoicingBuilder implements INodeType {
 		loadOptions: {
 			getTemplates,
 			getClients,
+			getInvoices,
+		},
+		listSearch: {
+			searchTemplates,
+			searchClients,
+			searchInvoices,
+			getTemplates: searchTemplates,
+			getClients: searchClients,
+			getInvoices: searchInvoices,
 		},
 		resourceMapping: {
 			getClientUpdateFields,
@@ -267,7 +281,7 @@ export class InvoicingBuilder implements INodeType {
 								pairedItem: { item: i },
 							});
 						} else if (operation === 'get') {
-							const clientId = this.getNodeParameter('clientId', i) as string;
+							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i));
 							const response = (await apiRequest.call(
 								this,
 								'GET',
@@ -282,7 +296,7 @@ export class InvoicingBuilder implements INodeType {
 								pairedItem: { item: i },
 							});
 						} else if (operation === 'update') {
-							const clientId = this.getNodeParameter('clientId', i, '') as string;
+							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i, ''));
 							if (!clientId) {
 								throw new NodeOperationError(
 									this.getNode(),
@@ -366,7 +380,7 @@ export class InvoicingBuilder implements INodeType {
 								pairedItem: { item: i },
 							});
 						} else if (operation === 'delete') {
-							const clientId = this.getNodeParameter('clientId', i) as string;
+							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i));
 							const response = (await apiRequest.call(
 								this,
 								'DELETE',
@@ -378,7 +392,7 @@ export class InvoicingBuilder implements INodeType {
 								pairedItem: { item: i },
 							});
 						} else if (operation === 'sendReminder') {
-							const clientId = this.getNodeParameter('clientId', i) as string;
+							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i));
 							const response = (await apiRequest.call(
 								this,
 								'POST',
@@ -417,9 +431,132 @@ export class InvoicingBuilder implements INodeType {
 
 			// Handle Invoice Resource
 			if (resource === 'invoice') {
+				if (operation === 'get') {
+					const numItems = items.length > 0 ? items.length : 1;
+					const returnData: INodeExecutionData[] = [];
+
+					for (let i = 0; i < numItems; i++) {
+						try {
+							const invoiceId = extractResourceLocatorValue(this.getNodeParameter('invoiceId', i));
+							const response = (await apiRequest.call(
+								this,
+								'GET',
+								`/api/v1/n8n/invoices/${invoiceId}`,
+							)) as IDataObject;
+
+							returnData.push({
+								json: response,
+								pairedItem: { item: i },
+							});
+						} catch (error) {
+							if (this.continueOnFail()) {
+								returnData.push({
+									json: {
+										error: (error as Error).message,
+									},
+									pairedItem: { item: i },
+								});
+								continue;
+							}
+							if (error instanceof NodeOperationError) {
+								throw new NodeOperationError(this.getNode(), error, { itemIndex: i });
+							}
+							const formatted = formatApiError(error);
+							throw new NodeApiError(this.getNode(), formatted.response, {
+								message: formatted.message,
+								httpCode: formatted.httpCode,
+								itemIndex: i,
+							});
+						}
+					}
+
+					return [returnData];
+				}
+
+				if (operation === 'download') {
+					const numItems = items.length > 0 ? items.length : 1;
+					const returnData: INodeExecutionData[] = [];
+
+					for (let i = 0; i < numItems; i++) {
+						try {
+							const invoiceId = extractResourceLocatorValue(this.getNodeParameter('invoiceId', i));
+							const downloadFormat = this.getNodeParameter('downloadFormat', i, 'pdf') as string;
+
+							const response = (await apiRequest.call(
+								this,
+								'GET',
+								`/api/v1/n8n/invoices/${invoiceId}/download`,
+								undefined,
+								{ format: downloadFormat },
+								{
+									encoding: 'arraybuffer',
+									returnFullResponse: true,
+									headers: {
+										Accept: 'application/pdf, image/png, */*',
+									},
+								},
+							)) as CreateApiResponse;
+
+							const contentDisposition = response.headers?.['content-disposition'];
+							let fileName = `invoice_${invoiceId}.${downloadFormat}`;
+							if (contentDisposition) {
+								const match = contentDisposition.match(/filename="?([^"]+)"?/);
+								if (match && match[1]) {
+									fileName = match[1];
+								}
+							}
+
+							const mimeType = downloadFormat === 'pdf' ? 'application/pdf' : 'image/png';
+							const fileBuffer = Buffer.isBuffer(response.body)
+								? response.body
+								: Buffer.from(response.body as ArrayBuffer);
+
+							const binaryData = await this.helpers.prepareBinaryData(
+								fileBuffer,
+								fileName,
+								mimeType,
+							);
+
+							returnData.push({
+								json: {
+									success: true,
+									invoiceId,
+									format: downloadFormat,
+									fileName,
+								},
+								binary: {
+									data: binaryData,
+								},
+								pairedItem: { item: i },
+							});
+						} catch (error) {
+							if (this.continueOnFail()) {
+								returnData.push({
+									json: {
+										error: (error as Error).message,
+									},
+									pairedItem: { item: i },
+								});
+								continue;
+							}
+							if (error instanceof NodeOperationError) {
+								throw new NodeOperationError(this.getNode(), error, { itemIndex: i });
+							}
+							const formatted = formatApiError(error);
+							throw new NodeApiError(this.getNode(), formatted.response, {
+								message: formatted.message,
+								httpCode: formatted.httpCode,
+								itemIndex: i,
+							});
+						}
+					}
+
+					return [returnData];
+				}
+
 				if (operation === 'create') {
 					const source = this.getNodeParameter('source', 0, 'googleSheets') as string;
-					const templateId = this.getNodeParameter('templateId', 0) as string;
+					const templateId = extractResourceLocatorValue(this.getNodeParameter('templateId', 0));
 					const format = this.getNodeParameter('format', 0, 'pdf') as string;
 					const sendToClient = this.getNodeParameter('sendToClient', 0, false) as boolean;
 
@@ -495,7 +632,7 @@ export class InvoicingBuilder implements INodeType {
 						const builtInvoices = [];
 
 						for (let i = 0; i < countToProcess; i++) {
-							const clientId = this.getNodeParameter('clientId', i, '') as string;
+							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i, ''));
 							const invoiceNumber = this.getNodeParameter('invoiceNumber', i, '') as string;
 							const poNumber = this.getNodeParameter('poNumber', i, '') as string;
 							const issueDate = this.getNodeParameter('issueDate', i, '') as string;

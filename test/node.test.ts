@@ -1867,4 +1867,109 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 		});
 		expect(result[0][0].pairedItem).toEqual({ item: 0 });
 	});
+
+	describe('Invoice Management (Phase 2)', () => {
+		it('get returns invoice details for given invoiceId', async () => {
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'get',
+					invoiceId: 'inv-123',
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/n8n/invoices/inv-123')) {
+						return {
+							id: 'inv-123',
+							invoice: { id: 'inv-123', templateName: 'Standard Invoice' },
+							updatedAt: '2026-10-28T12:00:00Z',
+						};
+					}
+					return {};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(result[0]).toHaveLength(1);
+			expect(result[0][0].json).toEqual({
+				id: 'inv-123',
+				invoice: { id: 'inv-123', templateName: 'Standard Invoice' },
+				updatedAt: '2026-10-28T12:00:00Z',
+			});
+			expect(result[0][0].pairedItem).toEqual({ item: 0 });
+		});
+
+		it('download returns binary file data with correct mime and filename', async () => {
+			const pdfBuffer = Buffer.from('%PDF-1.4 mock pdf data');
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'download',
+					invoiceId: 'inv-456',
+					downloadFormat: 'pdf',
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/n8n/invoices/inv-456/download')) {
+						return {
+							statusCode: 200,
+							headers: {
+								'content-type': 'application/pdf',
+								'content-disposition': 'attachment; filename="custom_invoice_456.pdf"',
+								'x-invoice-id': 'inv-456',
+							},
+							body: pdfBuffer,
+						};
+					}
+					return {};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(result[0]).toHaveLength(1);
+			expect(result[0][0].json).toEqual({
+				success: true,
+				invoiceId: 'inv-456',
+				format: 'pdf',
+				fileName: 'custom_invoice_456.pdf',
+			});
+			expect(result[0][0].binary?.data).toBeDefined();
+			expect(result[0][0].binary?.data.fileName).toBe('custom_invoice_456.pdf');
+			expect(result[0][0].binary?.data.mimeType).toBe('application/pdf');
+		});
+
+		it('getInvoices loadOptions method populates invoice options', async () => {
+			const mockLoadOptionsContext = {
+				getCredentials: vi.fn().mockResolvedValue({
+					baseUrl: 'https://api.invoicingbuilder.com',
+				}),
+				helpers: {
+					httpRequestWithAuthentication: vi.fn().mockResolvedValue({
+						items: [
+							{
+								id: 'inv-10',
+								invoice: {
+									templateName: 'Tax Invoice',
+									date: '2026-10-01',
+									balanceDue: '500',
+									currency: '$',
+									components: [
+										{ type: 'invoiceNumber', properties: { text: 'INV-1001' } },
+									],
+								},
+							},
+						],
+					}),
+				},
+			} as unknown as ILoadOptionsFunctions;
+
+			const options = await node.methods.loadOptions.getInvoices.call(
+				mockLoadOptionsContext,
+			);
+			expect(options).toHaveLength(1);
+			expect(options[0]).toEqual({
+				name: 'INV-1001 (Tax Invoice) - 2026-10-01 - $500',
+				value: 'inv-10',
+				description: 'Date: 2026-10-01 | Balance: $500',
+			});
+		});
+	});
 });
