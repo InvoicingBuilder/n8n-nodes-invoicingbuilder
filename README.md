@@ -81,6 +81,7 @@ Fetches aggregate invoice metrics and zero-filled monthly breakdowns grouped by 
 - **From / To**: Optional UTC date range (`YYYY-MM-DD`). The node validates that `From <= To`.
 - **Status**: Filter by invoice status (`All`, `Paid`, `Unpaid`, `Overdue`).
 - **Currency**: Optional ISO 4217 currency code (e.g. `USD`, `EUR`).
+- **Send to User**: Optional boolean (default: `false`). When enabled, automatically emails the summary report to the current authenticated user in the background without blocking node execution.
 
 #### Output
 Returns the complete summary report JSON unchanged with separate breakdowns for each currency (currencies are never summed together).
@@ -93,6 +94,7 @@ Fetches historical trend series with period-over-period percentage changes group
 - **End Date**: Optional anchor end date (`YYYY-MM-DD`). The series ends with the period containing this date. Note that the final period may be partial (`isPartial: true`).
 - **Date Basis**: `Issue Date` (default) or `Created At`.
 - **Currency**: Optional ISO currency code filter.
+- **Send to User**: Optional boolean (default: `false`). When enabled, automatically emails the trend analysis report to the current authenticated user in the background without blocking node execution.
 
 #### Output
 Returns the trend series JSON unchanged including absolute and percentage period-over-period deltas.

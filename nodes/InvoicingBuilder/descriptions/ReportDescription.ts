@@ -94,4 +94,17 @@ export const reportFields: INodeProperties[] = [
 		},
 		description: 'Optional ISO currency code filter (e.g. USD, EUR)',
 	},
+	{
+		displayName: 'Send to User',
+		name: 'sendToUser',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['generateReport'],
+			},
+		},
+		description: 'Whether to email the generated report to the current user (associated with the API key)',
+	},
 ];

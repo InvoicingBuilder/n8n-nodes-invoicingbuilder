@@ -677,6 +677,25 @@ describe('InvoicingBuilder Generate Report Operation (Regression Tests)', () => 
 		expect(result[0][0].json).toEqual(reportPayload);
 	});
 
+	it('passes sendToUser=true in qs to summary report endpoint when enabled', async () => {
+		let capturedQs: IDataObject | undefined;
+		const context = createMockExecuteContext({
+			items: [{ json: {} }],
+			parameters: {
+				operation: 'generateReport',
+				sendToUser: true,
+			},
+			httpHandler: async (opts) => {
+				capturedQs = opts.qs as IDataObject;
+				return { generatedAt: '2026-10-27T10:00:00Z', sendToUser: true };
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedQs?.sendToUser).toBe(true);
+		expect(result[0][0].json.sendToUser).toBe(true);
+	});
+
 	it('validates that from <= to in report date range', async () => {
 		const httpSpy = vi.fn();
 		const context = createMockExecuteContext({
@@ -760,6 +779,25 @@ describe('InvoicingBuilder Analyse Trends Operation (Regression Tests)', () => {
 
 		const result = await node.execute.call(context);
 		expect(result[0][0].json).toEqual(trendsPayload);
+	});
+
+	it('passes sendToUser=true in qs to trends endpoint when enabled', async () => {
+		let capturedQs: IDataObject | undefined;
+		const context = createMockExecuteContext({
+			items: [{ json: {} }],
+			parameters: {
+				operation: 'analyseTrends',
+				sendToUser: true,
+			},
+			httpHandler: async (opts) => {
+				capturedQs = opts.qs as IDataObject;
+				return { generatedAt: '2026-10-27T00:00:00Z', sendToUser: true };
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(capturedQs?.sendToUser).toBe(true);
+		expect(result[0][0].json.sendToUser).toBe(true);
 	});
 
 	it('handles 429 on trends endpoint', async () => {

@@ -97,4 +97,17 @@ export const trendFields: INodeProperties[] = [
 		},
 		description: 'Optional ISO currency code filter (e.g. USD, EUR)',
 	},
+	{
+		displayName: 'Send to User',
+		name: 'sendToUser',
+		type: 'boolean',
+		default: false,
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['analyseTrends'],
+			},
+		},
+		description: 'Whether to email the trend analysis report to the current user (associated with the API key)',
+	},
 ];
