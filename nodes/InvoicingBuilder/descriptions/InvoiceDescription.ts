@@ -19,6 +19,12 @@ export const invoiceOperations: INodeProperties[] = [
 				action: 'Create an invoice',
 			},
 			{
+				name: 'Delete',
+				value: 'delete',
+				description: 'Delete a past invoice by ID',
+				action: 'Delete an invoice',
+			},
+			{
 				name: 'Download',
 				value: 'download',
 				description: 'Download a past invoice as a PDF or PNG file',
@@ -31,10 +37,10 @@ export const invoiceOperations: INodeProperties[] = [
 				action: 'Get an invoice',
 			},
 			{
-				name: 'Delete',
-				value: 'delete',
-				description: 'Delete a past invoice by ID',
-				action: 'Delete an invoice',
+				name: 'Mark as Paid',
+				value: 'markAsPaid',
+				description: 'Mark an invoice as paid or unpaid',
+				action: 'Mark an invoice as paid',
 			},
 		],
 		default: 'create',
@@ -470,11 +476,40 @@ export const invoiceFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['invoice'],
-				operation: ['get', 'download', 'delete'],
+				operation: ['get', 'download', 'delete', 'markAsPaid'],
 			},
 		},
 		description:
 			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+	},
+
+	// ----------------------------------
+	// Payment Status Fields (markAsPaid)
+	// ----------------------------------
+	{
+		displayName: 'Status',
+		name: 'status',
+		type: 'options',
+		options: [
+			{
+				name: 'Paid',
+				value: 'paid',
+				description: 'Mark the invoice as fully paid',
+			},
+			{
+				name: 'Unpaid',
+				value: 'unpaid',
+				description: 'Mark the invoice as unpaid',
+			},
+		],
+		default: 'paid',
+		displayOptions: {
+			show: {
+				resource: ['invoice'],
+				operation: ['markAsPaid'],
+			},
+		},
+		description: 'Whether to mark the invoice as paid or unpaid',
 	},
 
 	// ----------------------------------

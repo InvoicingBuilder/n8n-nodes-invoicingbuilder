@@ -3,7 +3,7 @@
 [![npm version](https://badge.fury.io/js/n8n-nodes-invoicingbuilder.svg)](https://www.npmjs.com/package/n8n-nodes-invoicingbuilder)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This is an official n8n community node for [InvoicingBuilder](https://invoicingbuilder.com). It enables you to create and render pixel-perfect invoices (PDF and PNG) from Google Sheets or direct workflow data, manage clients, dispatch automated payment reminders, and run aggregate financial reports and trend analyses directly inside your n8n workflows.
+This is an official n8n community node for [InvoicingBuilder](https://invoicingbuilder.com). It enables you to create and render pixel-perfect invoices (PDF and PNG) from Google Sheets or direct workflow data, manage clients, dispatch automated payment reminders, synchronize payment statuses, and run aggregate financial reports and trend analyses directly inside your n8n workflows.
 
 [n8n](https://n8n.io/) is a fair-code licensed workflow automation platform.
 
@@ -18,9 +18,10 @@ This is an official n8n community node for [InvoicingBuilder](https://invoicingb
   - [1. Invoice Resource](#1-invoice-resource)
     - [Create Invoice (Google Sheets Source)](#create-invoice-google-sheets-source)
     - [Create Invoice (Direct Input Source)](#create-invoice-direct-input-source)
-    - [Delete Invoice](#delete-invoice)
     - [Download Invoice](#download-invoice)
     - [Get Invoice](#get-invoice)
+    - [Mark Invoice as Paid](#mark-invoice-as-paid)
+    - [Delete Invoice](#delete-invoice)
   - [2. Client Resource](#2-client-resource)
     - [Create Client](#create-client)
     - [Update Client](#update-client)
@@ -37,6 +38,7 @@ This is an official n8n community node for [InvoicingBuilder](https://invoicingb
   - [Workflow A: Automated Billing from Google Sheets to Email](#workflow-a-automated-billing-from-google-sheets-to-email)
   - [Workflow B: Direct Workflow Data to Client Invoicing with Email Dispatch](#workflow-b-direct-workflow-data-to-client-invoicing-with-email-dispatch)
   - [Workflow C: Automated Overdue Payment Reminders](#workflow-c-automated-overdue-payment-reminders)
+  - [Workflow D: Sync Payment Webhook to Mark Invoice as Paid](#workflow-d-sync-payment-webhook-to-mark-invoice-as-paid)
 - [Error Handling](#error-handling)
 - [Development and Testing](#development-and-testing)
 - [License](#license)
@@ -48,24 +50,29 @@ This is an official n8n community node for [InvoicingBuilder](https://invoicingb
 - **Multi-Source Invoice Generation**: Render invoices using **Google Sheets** (auto-detection of columns & line items) or **Direct Input / Workflow Data** (dynamic mapping from upstream nodes).
 - **Template-Driven Rendering**: Automatically fetches account templates with live pagination and search; clears stale designer placeholder data before rendering.
 - **Client Management**: Create, update, fetch, list, and delete clients with dynamic field mapping via n8n's Resource Mapper.
+- **Payment Status Tracking**: Mark invoices as **Paid** or **Unpaid** to easily synchronize payment states with Stripe, PayPal, Razorpay, or custom bank webhooks.
 - **Direct Client Emailing**: Toggle `Send to Client` to automatically dispatch rendered invoices to the client's email via InvoicingBuilder.
-- **Automated Payment Reminders**: Trigger one-click payment reminder emails to clients for overdue accounts.
+- **Automated Payment Reminders**: Trigger one-click payment reminder emails to clients for overdue accounts, with client-specific invoice selection.
 - **Financial Analytics**: Generate currency-grouped summary reports and periodic trend analyses, with an option to email reports directly to the account owner (`Send to User`).
 - **Flexible File Formats**: Generate and download rendered invoices as single PDF or PNG files, or bundled ZIP archives.
-- **Lazy Loading & Search**: Full pagination support for templates, clients, and invoice dropdowns across large datasets.
+- **Lazy Loading & Search**: Full pagination support for templates, clients, and invoice dropdowns across large datasets with in-flight request deduplication.
+- **AI Agent Tool Compatible**: Fully enabled (`usableAsTool: true`) for seamless integration into n8n AI Agent workflows.
 
 ---
 
 ## Installation
 
 ### Community Nodes (Recommended)
+
 1. In your n8n instance, navigate to **Settings > Community Nodes**.
 2. Click **Install**.
 3. Enter `n8n-nodes-invoicingbuilder` in the **npm package name** field.
 4. Agree to the risks of installing community nodes and click **Install**.
 
 ### Self-Hosted / Docker
+
 Install the package directly into your n8n root or custom extensions directory:
+
 ```bash
 npm install n8n-nodes-invoicingbuilder
 ```
@@ -78,8 +85,12 @@ Restart your n8n instance to activate the node.
 
 To authenticate requests to the InvoicingBuilder API, configure an **InvoicingBuilder API** credential in n8n.
 
-### Required Fields:
-- **API Key**: Your InvoicingBuilder API key (starts with `ib_`). Generate your key from the InvoicingBuilder dashboard under **Developer Settings**.
+### Fields:
+
+- **API Key** (`apiKey`): Required. Create an account on [InvoicingBuilder](https://invoicingbuilder.com) and generate an API key from the **API Keys** section. Generated API keys start with `ib_`.
+- **Base URL** (`baseUrl`): Required. Defaults to `https://api.invoicingbuilder.com`. Use this field if you are connecting through a custom proxy, internal staging environment, or testing tunnel (such as ngrok). Trailing slashes are stripped automatically.
+
+When configuring or saving credentials, n8n automatically runs a connection test against `/api/v1/auth` to verify the validity of your API key.
 
 ---
 
@@ -91,16 +102,17 @@ The **InvoicingBuilder** node provides three primary resources: **Invoice**, **C
 InvoicingBuilder Node
 ├── Invoice
 │   ├── Create       (From Google Sheet or Direct Workflow Data)
-│   ├── Delete       (Remove a past invoice from account history)
 │   ├── Download     (Retrieve rendered PDF/PNG binary by ID)
-│   └── Get          (Fetch invoice details and totals by ID)
+│   ├── Get          (Fetch invoice details, calculation totals, and payment status)
+│   ├── Mark as Paid (Update payment status to Paid or Unpaid)
+│   └── Delete       (Remove a past invoice from account history)
 ├── Client
 │   ├── Create       (Add new client with billing/shipping info)
 │   ├── Update       (Update client via dynamic Resource Mapper)
 │   ├── Get          (Retrieve client details by ID)
 │   ├── Get Many     (List all clients or apply limit)
 │   ├── Delete       (Remove client record)
-│   └── Send Reminder(Email payment reminder to client)
+│   └── Send Reminder(Email payment reminder to client for outstanding invoice)
 └── Report
     ├── Summary      (Aggregate metrics & monthly revenue by currency)
     └── Analyse Trends(Periodic growth & deltas by currency)
@@ -115,6 +127,7 @@ InvoicingBuilder Node
 Renders branded invoice documents and stores them in InvoicingBuilder history. You can select between two data sources:
 
 ##### Create Invoice (Google Sheets Source)
+
 Reads rows directly from a spreadsheet tab, groups line items by invoice, and builds invoices automatically:
 
 - **Template Name or ID**: Choose a template from your account (searchable dropdown with pagination) or supply an ID.
@@ -124,12 +137,23 @@ Reads rows directly from a spreadsheet tab, groups line items by invoice, and bu
 - **Format**: `PDF` (default) or `PNG`.
 - **Send to Client**: When enabled (`true`), automatically emails the generated invoice PDF/PNG to the recipient email detected from the sheet.
 
+**Sample Spreadsheet File:**
+
+A ready-to-use sample dataset is included in [`sample/sample_bulk_invoice.csv`](sample/sample_bulk_invoice.csv). You can import this file directly into Google Sheets to quickly test bulk invoice generation.
+
+It demonstrates standard column headers and multi-row grouping:
+- **Header Columns**: `Invoice Number`, `Date`, `Due Date`, `PO Number`, `Payment Terms`, `Ship To`, `Bill To`, `Notes`, `Terms`
+- **Line Item Columns**: `Description`, `Quantity`, `Rate`, `Tax`
+- **Multi-Line Grouping**: Consecutive line items under the same invoice group inherit invoice-level metadata while detailing distinct products/services on subsequent rows.
+
 **How Google Sheets Mapping Works:**
+
 - **Auto-Grouping**: The node automatically identifies the invoice identifier column (e.g. `Invoice Number`, `Order ID`, `Customer Name`) to group multiple line-item rows into separate invoices.
 - **Auto-Detection**: Standard columns (`Description`, `Quantity`, `Rate`, `Tax`, `Amount`, `Bill To`, `Due Date`, `Date`, etc.) are detected automatically without manual mapping.
 - **Placeholder Clearing**: All placeholder fields from the designer template are cleared prior to population, preventing default dummy data from leaking into the output.
 
 ##### Create Invoice (Direct Input Source)
+
 Map data directly from incoming workflow items (webhooks, CRMs, databases, Stripe, etc.) without requiring a spreadsheet:
 
 - **Template Name or ID**: Choose a template from your account.
@@ -145,7 +169,7 @@ Map data directly from incoming workflow items (webhooks, CRMs, databases, Strip
   - `Rate / Price`: Price per unit.
   - `Tax (%)`: Optional tax rate percentage (e.g. `10` or `10%`).
   - `Amount`: Total amount (optional; calculated automatically as `Quantity * Rate + Tax` if left blank).
-  - *Dynamic mapping*: Incoming items containing `lineItems` or `items` arrays are mapped automatically.
+  - _Dynamic mapping_: Incoming items containing `lineItems` or `items` arrays are mapped automatically if no explicit line items are added.
 - **Additional Fields**:
   - `Amount Paid`: Existing payments applied to the invoice.
   - `Notes`: Custom notes displayed on the invoice.
@@ -158,26 +182,28 @@ Map data directly from incoming workflow items (webhooks, CRMs, databases, Strip
 - **Send to Client**: When enabled (`true`), emails the rendered invoice directly to the client's billing email.
 
 ##### Invoice Create Output
+
 - **Binary Property**: Rendered file returned in `data`:
   - **1 Invoice**: Returns `invoice.pdf` or `invoice.png`.
   - **2 Invoices**: Returns a zip archive `invoices.zip` containing both invoices.
 - **JSON Metadata**:
   ```json
   {
-    "success": true,
-    "invoiceCount": 1,
-    "format": "pdf",
-    "fileName": "invoice.pdf",
-    "source": "direct",
-    "invoiceIds": ["inv_987654321"],
-    "sendToClient": true,
-    "emailedTo": ["billing@acme.com"]
+  	"success": true,
+  	"invoiceCount": 1,
+  	"format": "pdf",
+  	"fileName": "invoice.pdf",
+  	"source": "direct",
+  	"invoiceIds": ["inv_987654321"],
+  	"sendToClient": true,
+  	"emailedTo": ["billing@acme.com"]
   }
   ```
 
 ---
 
 #### Download Invoice
+
 Downloads a previously rendered and saved invoice as a binary file:
 
 - **Invoice Name or ID**: Select an invoice from your account history (searchable with pagination) or provide an invoice ID.
@@ -187,14 +213,37 @@ Downloads a previously rendered and saved invoice as a binary file:
 ---
 
 #### Get Invoice
+
 Fetches metadata, calculation totals, line items, and current payment status of an existing invoice:
 
 - **Invoice Name or ID**: Select an invoice from your account history or provide an invoice ID.
-- **Output**: Complete invoice JSON object including subtotal, taxes, balance due, and client details.
+- **Output**: Complete invoice JSON object including subtotal, taxes, balance due, and payment status (`isPaid`).
+
+---
+
+#### Mark Invoice as Paid
+
+Updates the payment status of an invoice to either `Paid` or `Unpaid`:
+
+- **Invoice Name or ID**: Select an invoice from your account history (searchable with pagination) or provide an invoice ID.
+- **Status**:
+  - `Paid` (default): Marks the invoice as fully paid. Sets `isPaid: true` and updates `balanceDue` to `0.00`.
+  - `Unpaid`: Reverts payment status. Sets `isPaid: false` and restores the balance due.
+- **Output**: Confirmation JSON object:
+  ```json
+  {
+  	"success": true,
+  	"message": "Invoice marked as paid successfully.",
+  	"invoiceId": "inv_987654321",
+  	"isPaid": true,
+  	"balanceDue": "0.00"
+  }
+  ```
 
 ---
 
 #### Delete Invoice
+
 Deletes a past invoice and its associated reminders from your InvoicingBuilder account history:
 
 - **Invoice Name or ID**: Select an invoice from your account history (searchable with pagination) or provide an invoice ID.
@@ -207,32 +256,44 @@ Deletes a past invoice and its associated reminders from your InvoicingBuilder a
 Manage your client directory directly within your workflows.
 
 #### Create Client
+
 Creates a new client in InvoicingBuilder:
+
 - **Name**: Client or company name (required).
 - **Email**: Primary billing email address.
 - **Bill To**: Default billing address and contact notes.
 - **Ship To**: Default shipping or delivery address.
 
 #### Update Client
+
 Updates an existing client using n8n's visual **Resource Mapper**:
+
 - **Client Name or ID**: Select the client to update.
-- **Update Fields**: Use the visual field mapper to update any subset of properties (`Name`, `Email`, `Bill To`, `Ship To`). Only modified fields are submitted to the API.
+- **Update Fields**: Use the visual field mapper to update any subset of properties (`Name`, `Email`, `Bill To`, `Ship To`). Only modified fields are submitted to the API, preserving existing data.
 
 #### Get Client
+
 Retrieves details for a specific client:
+
 - **Client Name or ID**: Select or provide the client ID.
 
 #### Get Many Clients
+
 Lists clients in your account:
+
 - **Return All**: Toggle to retrieve all clients (`true`) or specify a maximum count.
 - **Limit**: Maximum number of clients to return (default: `50`).
 
 #### Delete Client
+
 Deletes a client record from InvoicingBuilder:
+
 - **Client Name or ID**: Select or provide the client ID.
 
 #### Send Payment Reminder
+
 Dispatches an automated payment reminder email to the client for an outstanding or unpaid invoice:
+
 - **Client Name or ID**: Select or provide the client ID.
 - **Invoice Name or ID**: Select from a dynamic dropdown showing only invoices belonging to the chosen client (searchable with pagination) or provide an invoice ID.
 - **Output**: Status confirmation of the sent reminder email, recipient, and invoice details.
@@ -244,6 +305,7 @@ Dispatches an automated payment reminder email to the client for an outstanding 
 Generate aggregate financial summaries and trend analyses across your billing history.
 
 #### Summary Report
+
 Fetches high-level invoice statistics and zero-filled monthly breakdowns grouped by currency:
 
 - **From**: Optional UTC start date (`YYYY-MM-DD`).
@@ -253,6 +315,7 @@ Fetches high-level invoice statistics and zero-filled monthly breakdowns grouped
 - **Output**: JSON object with separate totals and monthly breakdowns per currency (currencies are never summed together).
 
 #### Analyse Trends
+
 Fetches historical growth series with period-over-period percentage and absolute changes grouped by currency:
 
 - **Period**: Aggregation interval (`Monthly`, `Quarterly`, `Yearly`).
@@ -269,7 +332,8 @@ Fetches historical growth series with period-over-period percentage and absolute
 
 All dropdowns for selecting entities (**Template**, **Client**, and **Invoice**) use n8n's **Resource Locator** pattern:
 
-- **From List (Search & Lazy Loading)**: As you type or scroll, the node requests paginated data from InvoicingBuilder (`searchTemplates`, `searchClients`, `searchInvoices`). This allows seamless selection across hundreds of records without hitting memory or payload limits.
+- **From List (Search & Lazy Loading)**: As you type or scroll, the node requests paginated data from InvoicingBuilder (`searchTemplates`, `searchClients`, `searchInvoices`, `searchClientInvoices`). This allows seamless selection across hundreds of records without hitting memory or payload limits.
+- **In-Flight Request Deduplication**: Prevents duplicate HTTP requests when multiple UI components query the same resource simultaneously.
 - **By ID**: Switch to **ID** mode to pass static IDs or dynamic n8n expressions (e.g. `={{ $json.clientId }}`).
 
 ---
@@ -306,6 +370,8 @@ graph LR
 3. **Gmail Node**:
    - Attachments: Binary property `data`
    - Subject: `Your Invoices are ready`
+
+> **Tip**: You can use the sample file provided in [`sample/sample_bulk_invoice.csv`](sample/sample_bulk_invoice.csv) as a template for setting up your Google Sheet.
 
 ---
 
@@ -346,6 +412,27 @@ graph LR
 
 ---
 
+### Workflow D: Sync Payment Webhook to Mark Invoice as Paid
+
+Listen for incoming payment events (Stripe, PayPal, Razorpay, or custom webhook) and automatically update the corresponding invoice in InvoicingBuilder to paid.
+
+```mermaid
+graph LR
+    Webhook[Stripe / Payment Webhook] --> Filter[Filter: payment_intent.succeeded]
+    Filter --> MarkPaid[InvoicingBuilder<br>Invoice: Mark as Paid<br>Status: Paid]
+    MarkPaid --> Slack[Slack / Email Notification]
+```
+
+1. **Webhook Trigger**: Receives payment event containing metadata with the invoice ID (e.g. `metadata.invoiceId`).
+2. **Filter / If**: Checks that the payment status is successful.
+3. **InvoicingBuilder**:
+   - Resource: `Invoice` | Operation: `Mark as Paid`
+   - Invoice Name or ID: `={{ $json.body.data.object.metadata.invoiceId }}`
+   - Status: `Paid`
+4. **Slack / Email**: Alerts the finance team that the invoice has been settled.
+
+---
+
 ## Error Handling
 
 - **401 Unauthorized**: Mapped to `Invalid, revoked or expired API key`.
@@ -358,38 +445,48 @@ graph LR
 ## Development and Testing
 
 ### Prerequisites
-- Node.js 18.x or 20.x
-- npm 9.x+
+
+- Node.js 24.x
+- npm 11.x+
 
 ### Build
+
 Compile the TypeScript code:
+
 ```bash
 npm run build
 ```
 
 ### Development Watch Mode
+
 ```bash
 npm run dev
 ```
 
 ### Linting
+
 ```bash
 npm run lint
 npm run lint:fix
 ```
 
 ### Running Tests
+
 Execute the complete test suite with Vitest:
+
 ```bash
 npm test
 ```
 
-Unit and integration tests cover:
+Unit and integration tests (101 tests across 3 suites) cover:
+
 - Dynamic Google Sheet CSV parsing and row grouping (`groupRows`).
 - Automatic template dummy field clearing and field matching (`buildInvoiceFields`).
 - Direct invoice building with client integration and line items (`buildDirectInvoice`).
 - Dynamic resource locator searches and pagination for templates, clients, and invoices.
+- Client-filtered invoice searches for payment reminders (`searchClientInvoices`).
 - Client CRUD operations, dynamic resource mapping, and payment reminders.
+- Invoice lifecycle operations: Create, Download, Get, Mark as Paid, and Delete.
 - Report summaries, trends series, and date validation.
 - Mock HTTP test suites covering error codes (400, 401, 404, 429).
 

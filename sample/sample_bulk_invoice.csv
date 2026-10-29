@@ -1,0 +1,16 @@
+Invoice Number,Date,Due Date,PO Number,Payment Terms,Ship To,Bill To,Notes,Terms,Description,Quantity,Rate,Tax
+INV-2026-0042,24-Dec-25,08-Jan-26,PO-2025-001,Net 15 days,"Invoicing Builder 123, Business Avenue NY 10001, United States Email: example@ib.com","Harborline Consulting Group 742 Hudson Street, Suite 405 NY 10014, United States Email: billing@harborlinecg.com",• Please include invoice number in payment reference • All amounts are in USD unless otherwise specified • Contact sales@company.com for any queries • Thank you for your business!,"• Payment is due within 15 days from the invoice date • Please make payment via bank transfer or card payment • Include the invoice number as the payment reference • All amounts are shown in USD, unless otherwise specified • For invoice assistance, contact billing@ib.com",Smartwatch – Model S2 with Heart Rate Monitor,1,1500,5
+,,,,,,,,,"Portable Power Bank – 10,000mAh, USB-C",1,100,2
+,,,,,,,,,Bluetooth Speakers – 10W Output,1,100,
+,,,,,,,,,Apple 15'' Screen,3,350,3
+,,,,,,,,,Wireless Earbuds – Model X100,2,200,3
+,,,,,,,,,Mouse,4,5,
+,,,,,,,,,Keyboard,5,27,
+,,,,,,,,,Laptop Bag,3,24,2
+,,,,,,,,,Cooling Fan,5,7,
+,,,,,,,,,Power Cable,2,10,2
+INV-2026-0043,24-Dec-25,23-Jan-26,PO-2025-022,Net 30 days,"Codsible  Agency, 315 W 36th St., New York, NY 10018, United States","Rivercom LLP, NY 10001, United States",• Please include invoice number in payment reference,"• Payment is due within 15 days from the invoice date • Please make payment via bank transfer or card payment • Include the invoice number as the payment reference • All amounts are shown in USD, unless otherwise specified",Mouse,4,5,
+,,,,,,,,,Keyboard,5,27,
+,,,,,,,,,Laptop Bag,3,24,2
+,,,,,,,,,Cooling Fan,5,7,
+,,,,,,,,,Power Cable,2,10,2

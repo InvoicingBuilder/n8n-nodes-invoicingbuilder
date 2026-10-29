@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
   - **Invoice**:
     - `Create`: Support multi-source invoice generation from Google Sheets (auto-detecting columns and grouped line items) or Direct Workflow Data (dynamic parameter mapping, line items, and client linkage).
     - `Get`: Retrieve invoice metadata, calculated totals, and payment status.
+    - `Mark as Paid`: Mark an invoice as paid or unpaid.
     - `Download`: Download rendered invoices as binary PDF or PNG files.
     - `Delete`: Remove an invoice and its associated reminders from account history.
   - **Client**:

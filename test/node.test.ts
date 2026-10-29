@@ -2037,6 +2037,102 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 			});
 		});
 
+		it('markAsPaid updates invoice status to paid', async () => {
+			let capturedMethod = '';
+			let capturedUrl = '';
+			let capturedBody: unknown = null;
+
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'markAsPaid',
+					invoiceId: 'inv-paid-123',
+					status: 'paid',
+				},
+				httpHandler: async (opts) => {
+					capturedMethod = opts.method || 'GET';
+					capturedUrl = opts.url || '';
+					capturedBody = opts.body;
+					return {
+						success: true,
+						message: 'Invoice marked as paid successfully.',
+						invoiceId: 'inv-paid-123',
+						isPaid: true,
+						balanceDue: '0.00',
+					};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(capturedMethod).toBe('PATCH');
+			expect(capturedUrl).toContain('/api/v1/n8n/invoices/inv-paid-123/payment-status');
+			expect(capturedBody).toEqual({ isPaid: true });
+			expect(result[0]).toHaveLength(1);
+			expect(result[0][0].json).toEqual({
+				success: true,
+				message: 'Invoice marked as paid successfully.',
+				invoiceId: 'inv-paid-123',
+				isPaid: true,
+				balanceDue: '0.00',
+			});
+			expect(result[0][0].pairedItem).toEqual({ item: 0 });
+		});
+
+		it('markAsPaid updates invoice status to unpaid', async () => {
+			let capturedBody: unknown = null;
+
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'markAsPaid',
+					invoiceId: 'inv-unpaid-123',
+					status: 'unpaid',
+				},
+				httpHandler: async (opts) => {
+					capturedBody = opts.body;
+					return {
+						success: true,
+						message: 'Invoice marked as unpaid successfully.',
+						invoiceId: 'inv-unpaid-123',
+						isPaid: false,
+						balanceDue: '50.00',
+					};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(capturedBody).toEqual({ isPaid: false });
+			expect(result[0]).toHaveLength(1);
+			expect(result[0][0].json).toEqual({
+				success: true,
+				message: 'Invoice marked as unpaid successfully.',
+				invoiceId: 'inv-unpaid-123',
+				isPaid: false,
+				balanceDue: '50.00',
+			});
+		});
+
+		it('markAsPaid handles error with continueOnFail', async () => {
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'markAsPaid',
+					invoiceId: 'inv-err',
+					status: 'paid',
+				},
+				continueOnFail: true,
+				httpHandler: async () => {
+					throw new Error('Invoice not found');
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(result[0]).toHaveLength(1);
+			expect(result[0][0].json).toEqual({
+				error: 'Invoice not found',
+			});
+		});
+
 		it('getInvoices loadOptions method populates invoice options', async () => {
 			const mockLoadOptionsContext = {
 				getCredentials: vi.fn().mockResolvedValue({

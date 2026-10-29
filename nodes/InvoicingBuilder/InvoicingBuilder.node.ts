@@ -872,6 +872,56 @@ export class InvoicingBuilder implements INodeType {
 
 					return [returnData];
 				}
+
+				if (operation === 'markAsPaid') {
+					const numItems = items.length > 0 ? items.length : 1;
+					const returnData: INodeExecutionData[] = [];
+
+					for (let i = 0; i < numItems; i++) {
+						try {
+							const invoiceId = extractResourceLocatorValue(this.getNodeParameter('invoiceId', i));
+							const statusParam = this.getNodeParameter('status', i, 'paid');
+							const isPaid = statusParam === 'paid' || statusParam === true || statusParam === 'true';
+
+							const payload: IDataObject = {
+								isPaid,
+							};
+
+							const response = (await apiRequest.call(
+								this,
+								'PATCH',
+								`/api/v1/n8n/invoices/${invoiceId}/payment-status`,
+								payload,
+							)) as IDataObject;
+
+							returnData.push({
+								json: response,
+								pairedItem: { item: i },
+							});
+						} catch (error) {
+							if (this.continueOnFail()) {
+								returnData.push({
+									json: {
+										error: (error as Error).message,
+									},
+									pairedItem: { item: i },
+								});
+								continue;
+							}
+							if (error instanceof NodeOperationError) {
+								throw new NodeOperationError(this.getNode(), error, { itemIndex: i });
+							}
+							const formatted = formatApiError(error);
+							throw new NodeApiError(this.getNode(), formatted.response, {
+								message: formatted.message,
+								httpCode: formatted.httpCode,
+								itemIndex: i,
+							});
+						}
+					}
+
+					return [returnData];
+				}
 			}
 
 			throw new NodeOperationError(this.getNode(), `Unknown operation: ${operation}`);
