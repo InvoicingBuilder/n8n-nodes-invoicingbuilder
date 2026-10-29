@@ -30,6 +30,12 @@ export const invoiceOperations: INodeProperties[] = [
 				description: 'Get details of an invoice by ID',
 				action: 'Get an invoice',
 			},
+			{
+				name: 'Delete',
+				value: 'delete',
+				description: 'Delete a past invoice by ID',
+				action: 'Delete an invoice',
+			},
 		],
 		default: 'create',
 	},
@@ -464,7 +470,7 @@ export const invoiceFields: INodeProperties[] = [
 		displayOptions: {
 			show: {
 				resource: ['invoice'],
-				operation: ['get', 'download'],
+				operation: ['get', 'download', 'delete'],
 			},
 		},
 		description:

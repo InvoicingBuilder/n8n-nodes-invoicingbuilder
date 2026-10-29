@@ -1,14 +1,10 @@
 import type { ILoadOptionsFunctions, INodePropertyOptions } from 'n8n-workflow';
 import { apiRequest } from '../helpers/request';
 
-interface ComponentItem {
-	type?: string;
-	properties?: {
-		text?: string;
-		invoiceNumber?: string;
-		date?: string;
-	};
-}
+import {
+	findComponentRecursive,
+	type RecursiveComponentItem,
+} from '../helpers/resourceLocator';
 
 interface InvoiceHistoryItem {
 	id: string;
@@ -18,7 +14,9 @@ interface InvoiceHistoryItem {
 		date?: string;
 		balanceDue?: string;
 		currency?: string;
-		components?: ComponentItem[];
+		invoiceNumber?: string;
+		name?: string;
+		components?: RecursiveComponentItem[];
 	};
 	updatedAt?: string;
 }
@@ -48,18 +46,31 @@ export async function getInvoices(
 		const items = Array.isArray(response?.items) ? response.items : [];
 		for (const item of items) {
 			const inv = item.invoice || {};
-			const numComp = inv.components?.find(
-				(c: ComponentItem) => c?.type === 'invoiceNumber' || c?.type === 'invoice-number',
-			);
-			const invoiceNumber = numComp?.properties?.text || numComp?.properties?.invoiceNumber;
-			const title = invoiceNumber
-				? `${invoiceNumber} (${inv.templateName || 'Invoice'})`
-				: inv.templateName || item.id;
+			const numComp = findComponentRecursive(inv.components, [
+				'invoiceNumber',
+				'invoice_number',
+				'invoice-number',
+			]);
+			const invoiceNumber = (
+				numComp?.properties?.text ||
+				numComp?.properties?.invoiceNumber ||
+				inv.invoiceNumber ||
+				''
+			).trim();
 
-			const dateComp = inv.components?.find(
-				(c: ComponentItem) => c?.type === 'customDate' || c?.type === 'date',
-			);
-			const rawDate = inv.date || dateComp?.properties?.text || dateComp?.properties?.date;
+			const templateName = inv.templateName || inv.name || 'Invoice';
+			const title = invoiceNumber
+				? `${invoiceNumber} (${templateName})`
+				: templateName || item.id;
+
+			const dateComp = findComponentRecursive(inv.components, [
+				'customDate',
+				'date',
+				'issueDate',
+				'invoiceDate',
+			]);
+			const rawDate =
+				inv.date || dateComp?.properties?.text || dateComp?.properties?.date;
 			const issueDate = rawDate ? String(rawDate).split('T')[0] : '';
 
 			const currency = inv.currency || '$';

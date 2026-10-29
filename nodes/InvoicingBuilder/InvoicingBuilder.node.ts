@@ -762,9 +762,9 @@ export class InvoicingBuilder implements INodeType {
 					const idsHeader = response.headers?.['x-invoice-ids'];
 					const invoiceIds = idsHeader
 						? idsHeader
-								.split(',')
-								.map((id: string) => id.trim())
-								.filter(Boolean)
+							.split(',')
+							.map((id: string) => id.trim())
+							.filter(Boolean)
 						: undefined;
 
 					const fileName = invoiceCount === 1 ? `invoice.${format}` : 'invoices.zip';
@@ -829,6 +829,48 @@ export class InvoicingBuilder implements INodeType {
 							},
 						],
 					];
+				}
+
+				if (operation === 'delete') {
+					const numItems = items.length > 0 ? items.length : 1;
+					const returnData: INodeExecutionData[] = [];
+
+					for (let i = 0; i < numItems; i++) {
+						try {
+							const invoiceId = extractResourceLocatorValue(this.getNodeParameter('invoiceId', i));
+							const response = (await apiRequest.call(
+								this,
+								'DELETE',
+								`/api/v1/n8n/invoices/${invoiceId}`,
+							)) as IDataObject;
+
+							returnData.push({
+								json: response,
+								pairedItem: { item: i },
+							});
+						} catch (error) {
+							if (this.continueOnFail()) {
+								returnData.push({
+									json: {
+										error: (error as Error).message,
+									},
+									pairedItem: { item: i },
+								});
+								continue;
+							}
+							if (error instanceof NodeOperationError) {
+								throw new NodeOperationError(this.getNode(), error, { itemIndex: i });
+							}
+							const formatted = formatApiError(error);
+							throw new NodeApiError(this.getNode(), formatted.response, {
+								message: formatted.message,
+								httpCode: formatted.httpCode,
+								itemIndex: i,
+							});
+						}
+					}
+
+					return [returnData];
 				}
 			}
 

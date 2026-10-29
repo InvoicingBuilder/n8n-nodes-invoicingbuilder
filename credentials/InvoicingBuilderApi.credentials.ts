@@ -52,13 +52,16 @@ export class InvoicingBuilderApi implements ICredentialType {
 			baseURL: '={{$credentials.baseUrl}}',
 			url: '/api/v1/auth',
 			method: 'GET',
+			headers: {
+				'x-api-key': '={{$credentials.apiKey}}',
+			},
 		},
 		rules: [
 			{
 				type: 'responseSuccessBody',
 				properties: {
 					key: 'valid',
-					value: true,
+					value: false,
 					message: 'Invalid, revoked or expired API key',
 				},
 			},

@@ -1985,6 +1985,58 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 			expect(result[0][0].binary?.data.mimeType).toBe('application/pdf');
 		});
 
+		it('delete returns success response when deleting an invoice', async () => {
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'delete',
+					invoiceId: 'inv-to-delete-123',
+				},
+				httpHandler: async (opts) => {
+					if (
+						opts.method === 'DELETE' &&
+						opts.url?.includes('/api/v1/n8n/invoices/inv-to-delete-123')
+					) {
+						return {
+							success: true,
+							message: 'Invoice deleted successfully.',
+							invoiceId: 'inv-to-delete-123',
+						};
+					}
+					return {};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(result[0]).toHaveLength(1);
+			expect(result[0][0].json).toEqual({
+				success: true,
+				message: 'Invoice deleted successfully.',
+				invoiceId: 'inv-to-delete-123',
+			});
+			expect(result[0][0].pairedItem).toEqual({ item: 0 });
+		});
+
+		it('delete handles error with continueOnFail', async () => {
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'delete',
+					invoiceId: 'inv-not-found',
+				},
+				continueOnFail: true,
+				httpHandler: async () => {
+					throw new Error('Invoice with ID not found');
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(result[0]).toHaveLength(1);
+			expect(result[0][0].json).toEqual({
+				error: 'Invoice with ID not found',
+			});
+		});
+
 		it('getInvoices loadOptions method populates invoice options', async () => {
 			const mockLoadOptionsContext = {
 				getCredentials: vi.fn().mockResolvedValue({

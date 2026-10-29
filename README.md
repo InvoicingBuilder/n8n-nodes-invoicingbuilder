@@ -18,6 +18,7 @@ This is an official n8n community node for [InvoicingBuilder](https://invoicingb
   - [1. Invoice Resource](#1-invoice-resource)
     - [Create Invoice (Google Sheets Source)](#create-invoice-google-sheets-source)
     - [Create Invoice (Direct Input Source)](#create-invoice-direct-input-source)
+    - [Delete Invoice](#delete-invoice)
     - [Download Invoice](#download-invoice)
     - [Get Invoice](#get-invoice)
   - [2. Client Resource](#2-client-resource)
@@ -90,6 +91,7 @@ The **InvoicingBuilder** node provides three primary resources: **Invoice**, **C
 InvoicingBuilder Node
 ├── Invoice
 │   ├── Create       (From Google Sheet or Direct Workflow Data)
+│   ├── Delete       (Remove a past invoice from account history)
 │   ├── Download     (Retrieve rendered PDF/PNG binary by ID)
 │   └── Get          (Fetch invoice details and totals by ID)
 ├── Client
@@ -189,6 +191,14 @@ Fetches metadata, calculation totals, line items, and current payment status of 
 
 - **Invoice Name or ID**: Select an invoice from your account history or provide an invoice ID.
 - **Output**: Complete invoice JSON object including subtotal, taxes, balance due, and client details.
+
+---
+
+#### Delete Invoice
+Deletes a past invoice and its associated reminders from your InvoicingBuilder account history:
+
+- **Invoice Name or ID**: Select an invoice from your account history (searchable with pagination) or provide an invoice ID.
+- **Output**: Confirmation JSON (`success: true`, `message`, `invoiceId`).
 
 ---
 

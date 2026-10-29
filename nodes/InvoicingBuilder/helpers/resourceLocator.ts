@@ -69,3 +69,34 @@ export function extractResourceLocatorValue(
 	}
 	return String(val);
 }
+
+export interface RecursiveComponentItem {
+	type?: string;
+	properties?: {
+		text?: string;
+		invoiceNumber?: string;
+		date?: string;
+	};
+	children?: RecursiveComponentItem[];
+}
+
+/**
+ * Recursively traverses a component tree to find a component matching any of the specified types.
+ */
+export function findComponentRecursive(
+	components: RecursiveComponentItem[] | undefined,
+	types: string[],
+): RecursiveComponentItem | undefined {
+	if (!components || !Array.isArray(components)) return undefined;
+	for (const comp of components) {
+		if (comp?.type && types.includes(comp.type)) {
+			return comp;
+		}
+		if (Array.isArray(comp?.children) && comp.children.length > 0) {
+			const nested = findComponentRecursive(comp.children, types);
+			if (nested) return nested;
+		}
+	}
+	return undefined;
+}
+
