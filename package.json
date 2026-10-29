@@ -1,11 +1,16 @@
 {
   "name": "n8n-nodes-invoicingbuilder",
   "version": "0.1.0",
-  "description": "n8n community node for InvoicingBuilder to create invoices, generate summary reports, and analyse trends.",
+  "description": "n8n community node for InvoicingBuilder to create invoices, manage clients, generate financial reports, and analyse billing trends.",
   "license": "MIT",
   "homepage": "https://invoicingbuilder.com",
   "keywords": [
-    "n8n-community-node-package"
+    "n8n-community-node-package",
+    "invoicing",
+    "invoice",
+    "billing",
+    "pdf",
+    "accounting"
   ],
   "author": {
     "name": "Sanjay Radadiya",
@@ -13,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/invoicingbuilder/n8n-nodes-invoicingbuilder.git"
+    "url": "https://github.com/InvoicingBuilder/n8n-nodes-invoicingbuilder.git"
   },
   "scripts": {
     "build": "n8n-node build",
