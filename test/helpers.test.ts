@@ -4,6 +4,7 @@ import { buildInvoiceFields } from '../nodes/InvoicingBuilder/helpers/buildInvoi
 import { normalizeBaseUrl, DEFAULT_BASE_URL } from '../nodes/InvoicingBuilder/helpers/request';
 import { formatApiError } from '../nodes/InvoicingBuilder/helpers/errors';
 import { parseCsv, extractSpreadsheetId } from '../nodes/InvoicingBuilder/helpers/googleSheets';
+import { buildDirectInvoice } from '../nodes/InvoicingBuilder/helpers/directInvoice';
 
 describe('groupRows pure function', () => {
 	it('groups rows by column value', () => {
@@ -496,3 +497,88 @@ describe('Template Value Clearing & Replacement (Requirement 3)', () => {
 		expect(table.some((i) => i.description === 'Keyboard')).toBe(false);
 	});
 });
+
+describe('buildDirectInvoice helper', () => {
+	it('maps shipTo, poNumber, logo, and signature correctly', () => {
+		const templateFields = [
+			{ id: 'f_billto', type: 'billTo', value: 'Default Bill' },
+			{ id: 'f_shipto', type: 'shipTo', value: 'Default Ship' },
+			{ id: 'f_ponum', type: 'poNumber', value: 'Default PO' },
+			{ id: 'f_logo', type: 'addLogo', value: 'Default Logo' },
+			{ id: 'f_sig', type: 'signature', value: 'Default Sig' },
+			{ id: 'f_table', type: 'table', value: [{ description: 'Default Item' }] },
+		];
+
+		const result = buildDirectInvoice({
+			templateId: 'tmpl_custom',
+			format: 'pdf',
+			billTo: 'Acme HQ\n100 Main St',
+			shipTo: 'Acme Depot\n200 Warehouse Way',
+			poNumber: 'PO-2026-ABC',
+			tableFieldId: 'f_table',
+			lineItems: [
+				{ description: 'Widget A', quantity: 2, rate: 50 },
+			],
+			additionalFields: {
+				logo: 'https://example.com/brand-logo.png',
+				signature: 'data:image/png;base64,sample-signature',
+				paymentTerms: 'Net 15',
+				notes: 'Prompt payment appreciated',
+			},
+			templateFields,
+		});
+
+		expect(result.templateId).toBe('tmpl_custom');
+		expect(result.format).toBe('pdf');
+		expect(result.fields.billTo).toBe('Acme HQ\n100 Main St');
+		expect(result.fields.f_billto).toBe('Acme HQ\n100 Main St');
+		expect(result.fields.shipTo).toBe('Acme Depot\n200 Warehouse Way');
+		expect(result.fields.f_shipto).toBe('Acme Depot\n200 Warehouse Way');
+		expect(result.fields.poNumber).toBe('PO-2026-ABC');
+		expect(result.fields.f_ponum).toBe('PO-2026-ABC');
+		expect(result.fields.addLogo).toBe('https://example.com/brand-logo.png');
+		expect(result.fields.f_logo).toBe('https://example.com/brand-logo.png');
+		expect(result.fields.signature).toBe('data:image/png;base64,sample-signature');
+		expect(result.fields.f_sig).toBe('data:image/png;base64,sample-signature');
+		expect(result.fields.paymentTerms).toBe('Net 15');
+		expect(result.fields.notes).toBe('Prompt payment appreciated');
+	});
+
+	it('preserves preconfigured template logo and signature when not overridden in additionalFields', () => {
+		const templateFields = [
+			{ id: 'f_logo', type: 'addLogo', value: 'https://stored.com/existing-logo.png' },
+			{ id: 'f_sig', type: 'signature', value: 'https://stored.com/existing-sig.png' },
+			{ id: 'f_notes', type: 'notes', value: 'Old dummy template notes' },
+		];
+
+		const result = buildDirectInvoice({
+			templateId: 'tmpl_1',
+			format: 'png',
+			billTo: 'Customer Co',
+			additionalFields: {},
+			templateFields,
+		});
+
+		// Dummy notes are cleared
+		expect(result.fields.f_notes).toBe('');
+		// Preconfigured template logo and signature are NOT wiped with empty string
+		expect(result.fields.f_logo).toBeUndefined();
+		expect(result.fields.f_sig).toBeUndefined();
+	});
+
+	it('preserves and maps clientId when provided in buildDirectInvoice', () => {
+		const result = buildDirectInvoice({
+			templateId: 'tmpl_client',
+			format: 'pdf',
+			clientId: 'client_xyz_789',
+			clientName: 'Client XYZ',
+			clientEmail: 'xyz@example.com',
+		});
+
+		expect(result.clientId).toBe('client_xyz_789');
+		expect(result.fields.clientId).toBe('client_xyz_789');
+		expect(result.clientName).toBe('Client XYZ');
+		expect(result.clientEmail).toBe('xyz@example.com');
+	});
+});
+

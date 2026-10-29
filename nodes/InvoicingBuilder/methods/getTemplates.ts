@@ -26,38 +26,34 @@ export async function getTemplates(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
 	const returnData: INodePropertyOptions[] = [];
-	let page = 1;
-	let totalPages = 1;
 
-	do {
+	try {
 		const response = (await apiRequest.call(
 			this,
 			'GET',
 			'/api/v1/templates',
 			undefined,
 			{
-				page,
+				page: 1,
 				limit: 50,
 			},
 		)) as TemplatesApiResponse;
 
-		if (response && Array.isArray(response.items)) {
-			for (const item of response.items) {
-				const templateName =
-					item.template?.name ||
-					item.template?.templateName ||
-					`Template ${item.id}`;
+		const items = Array.isArray(response?.items) ? response.items : [];
+		for (const item of items) {
+			const templateName =
+				item.template?.name ||
+				item.template?.templateName ||
+				`Template ${item.id}`;
 
-				returnData.push({
-					name: templateName,
-					value: item.id,
-				});
-			}
+			returnData.push({
+				name: templateName,
+				value: item.id,
+			});
 		}
-
-		totalPages = response?.totalPages || 1;
-		page++;
-	} while (page <= totalPages);
+	} catch {
+		// If request fails (e.g. offline configuration), return empty list
+	}
 
 	return returnData;
 }

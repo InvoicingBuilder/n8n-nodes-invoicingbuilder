@@ -23,8 +23,8 @@ export const trendFields: INodeProperties[] = [
 		required: true,
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['analyseTrends'],
+				resource: ['report', 'invoice'],
+				operation: ['trends', 'analyseTrends'],
 			},
 		},
 		description: 'Trend grouping frequency. The final period in the series may be partial (isPartial: true).',
@@ -40,8 +40,8 @@ export const trendFields: INodeProperties[] = [
 		default: 12,
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['analyseTrends'],
+				resource: ['report', 'invoice'],
+				operation: ['trends', 'analyseTrends'],
 			},
 		},
 		description:
@@ -54,8 +54,8 @@ export const trendFields: INodeProperties[] = [
 		default: '',
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['analyseTrends'],
+				resource: ['report', 'invoice'],
+				operation: ['trends', 'analyseTrends'],
 			},
 		},
 		description:
@@ -68,8 +68,8 @@ export const trendFields: INodeProperties[] = [
 		default: false,
 		displayOptions: {
 			show: {
-				resource: ['invoice'],
-				operation: ['analyseTrends'],
+				resource: ['report', 'invoice'],
+				operation: ['trends', 'analyseTrends'],
 			},
 		},
 		description: 'Whether to email the trend analysis report to the current user (associated with the API key)',

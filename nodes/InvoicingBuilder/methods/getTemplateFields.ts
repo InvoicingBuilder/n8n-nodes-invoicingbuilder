@@ -1,6 +1,8 @@
 import type { ILoadOptionsFunctions, INodePropertyOptions } from 'n8n-workflow';
 import { apiRequest } from '../helpers/request';
 
+import { extractResourceLocatorValue } from '../helpers/resourceLocator';
+
 interface TemplateFieldItem {
 	id: string;
 	type: string;
@@ -22,15 +24,21 @@ interface TemplateFieldsApiResponse {
 export async function getTemplateFields(
 	this: ILoadOptionsFunctions,
 ): Promise<INodePropertyOptions[]> {
-	let templateId = this.getCurrentNodeParameter('templateId') as string | undefined;
-	if (!templateId) {
+	let rawTemplateId: unknown;
+	try {
+		rawTemplateId = this.getCurrentNodeParameter('templateId');
+	} catch {
+		// Ignore if not present
+	}
+	if (!rawTemplateId) {
 		try {
-			templateId = this.getNodeParameter('templateId', 0) as string | undefined;
+			rawTemplateId = this.getNodeParameter('templateId', 0);
 		} catch {
 			// Parameter not yet selected or not available
 		}
 	}
 
+	const templateId = extractResourceLocatorValue(rawTemplateId);
 	if (!templateId) {
 		return [];
 	}
