@@ -1,5 +1,5 @@
 {
-  "name": "n8n-nodes-invoicingbuilder",
+  "name": "@invoicing-builder/n8n-nodes-invoicing-builder",
   "version": "0.1.0",
   "description": "n8n community node for InvoicingBuilder to create invoices, manage clients, generate financial reports, and analyse billing trends.",
   "license": "MIT",
@@ -13,8 +13,8 @@
     "accounting"
   ],
   "author": {
-    "name": "Sanjay Radadiya",
-    "email": "sanjay.radadiya91@gmail.com"
+    "name": "Invoicing Builder",
+    "email": "invoicingbuilder@gmail.com"
   },
   "repository": {
     "type": "git",

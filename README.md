@@ -1,6 +1,6 @@
-# n8n-nodes-invoicingbuilder
+# @invoicing-builder/n8n-nodes-invoicing-builder
 
-[![npm version](https://img.shields.io/npm/v/n8n-nodes-invoicingbuilder)](https://www.npmjs.com/package/n8n-nodes-invoicingbuilder)
+[![npm version](https://img.shields.io/npm/v/@invoicing-builder/n8n-nodes-invoicing-builder)](https://www.npmjs.com/package/@invoicing-builder/n8n-nodes-invoicing-builder)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An [n8n](https://n8n.io/) community node for [InvoicingBuilder](https://invoicingbuilder.com). Create invoices from workflow data or Google Sheets, manage clients, update payment status, send payment reminders, download rendered invoices, and pull financial reports, all from your n8n workflows.
@@ -31,14 +31,12 @@ n8n is a [fair-code licensed](https://docs.n8n.io/sustainable-use-license/) work
 
 Follow the [n8n community nodes installation guide](https://docs.n8n.io/integrations/community-nodes/installation/).
 
-**Self-hosted n8n (UI):** open **Settings → Community Nodes → Install**, enter `n8n-nodes-invoicingbuilder`, accept the risk notice, and install.
+**Self-hosted n8n (UI):** open **Settings → Community Nodes → Install**, enter `@invoicing-builder/n8n-nodes-invoicing-builder`, accept the risk notice, and install.
 
 **Self-hosted n8n (manual):** install into your n8n custom nodes directory, then restart n8n.
 
 ```bash
-mkdir -p ~/.n8n/nodes
-cd ~/.n8n/nodes
-npm install n8n-nodes-invoicingbuilder
+npm install @invoicing-builder/n8n-nodes-invoicing-builder
 ```
 
 Docker and queue-mode setups differ. Make sure the package is installed where every n8n process that runs workflows can load it. See the [manual installation guide](https://docs.n8n.io/integrations/community-nodes/installation/manual-installation/).
@@ -51,7 +49,7 @@ Community nodes run with the same access as n8n itself. Install only packages wh
 
 1. Create an **InvoicingBuilder API** credential (see [Credentials](#credentials)).
 2. Add the **InvoicingBuilder** node to a workflow and select the credential.
-3. Run a read-only operation first, such as **Client → Get Many**, and confirm the output.
+3. Run a read-only operation first, such as **Invoice → Get an Invoice**, and confirm the output.
 4. Only then enable operations that send email, change payment status, or delete data.
 
 ## Credentials
@@ -61,8 +59,6 @@ Create an **InvoicingBuilder API** credential with:
 | Field   | Required | Description                                                                                                             |
 | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
 | API Key | Yes      | Generate it under **API Keys** in your [InvoicingBuilder](https://invoicingbuilder.com) account. Keys start with `ib_`. |
-
-When you save the credential, n8n tests it against the InvoicingBuilder API (`/api/v1/auth`).
 
 Credential safety:
 
@@ -74,11 +70,11 @@ Credential safety:
 
 <!-- VERIFY BEFORE PUBLISHING: fill in the real minimum n8n version and the versions you tested. -->
 
-| Item                | Value              |
-| ------------------- | ------------------ |
-| Minimum n8n version | 1.86.4             |
-| Tested n8n versions | 1.86.4             |
-| Node.js             | 24.x               |
+| Item                | Value  |
+| ------------------- | ------ |
+| Minimum n8n version | 1.86.4 |
+| Tested n8n versions | 1.86.4 |
+| Node.js             | 24.x   |
 
 ## Operations
 
@@ -90,13 +86,9 @@ The **InvoicingBuilder** node has three resources.
 | **Client**  | Create, Update, Get, Get Many, Delete, Send Payment Reminder |
 | **Report**  | Summary, Analyse Trends                                      |
 
-Template, client, and invoice pickers support search and pagination, so they work on accounts with many records. Switch a picker to **ID** mode to pass a fixed ID or an expression such as `{{ $json.clientId }}`.
-
 ### Invoice
 
 #### Create
-
-Renders an invoice from one of your InvoicingBuilder templates and saves it to your invoice history.
 
 Common parameters:
 
@@ -111,23 +103,22 @@ Common parameters:
 
 Build the invoice from data in your workflow.
 
-| Parameter               | Description                                                                                               |
-| ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| Client                  | Select a client or pass a client ID. Name, email, Bill To, and Ship To are loaded from the client record. |
-| Invoice Number          | For example `INV-2026-001`. If empty, the template default is kept.                                       |
-| PO Number               | Optional.                                                                                                 |
-| Invoice Date / Due Date | UTC dates in `YYYY-MM-DD`.                                                                                |
-| Line Items              | See below.                                                                                                |
+| Parameter               | Description                                                          |
+| ----------------------- | -------------------------------------------------------------------- |
+| Client                  | Select a client from your client list.                               |
+| Invoice Number          | For example `INV-2026-001`. If empty, the template default is empty. |
+| PO Number               | Optional.                                                            |
+| Invoice Date / Due Date | UTC dates in `YYYY-MM-DD`.                                           |
+| Line Items              | See below.                                                           |
 
 Line item fields:
 
-| Field        | Description                                                                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Description  | Required.                                                                                                                                         |
-| Quantity     | Default `1`.                                                                                                                                      |
-| Rate / Price | Price per unit.                                                                                                                                   |
-| Tax (%)      | Optional percentage, for example `10` or `10%`.                                                                                                   |
-| Amount       | Optional. If empty, it is calculated as `Quantity × Rate × (1 + Tax ÷ 100)`. <!-- VERIFY: confirm this matches the node's actual calculation. --> |
+| Field        | Description                                     |
+| ------------ | ----------------------------------------------- |
+| Description  | Required.                                       |
+| Quantity     | Default `1`.                                    |
+| Rate / Price | Price per unit.                                 |
+| Tax (%)      | Optional percentage, for example `10` or `10%`. |
 
 If you add no line items, incoming items that contain a `lineItems` or `items` array are mapped automatically.
 
@@ -137,18 +128,24 @@ Additional fields: Amount Paid, Notes, Terms & Conditions, Payment Terms (for ex
 
 Reads rows from a worksheet, groups rows into invoices, and renders them.
 
-| Parameter          | Description                                 |
-| ------------------ | ------------------------------------------- |
-| Google Spreadsheet | Spreadsheet URL or ID.                      |
-| Worksheet          | Worksheet name or ID. Defaults to `Sheet1`. |
+| Parameter          | Description                                    |
+| ------------------ | ---------------------------------------------- |
+| Google Spreadsheet | Google Spreadsheet URL or Spreadsheet ID.      |
+| Worksheet          | Worksheet name. Defaults to `Sheet1`.          |
 
-<!-- VERIFY BEFORE PUBLISHING: document exactly how the sheet is accessed (public link? OAuth? fetched server-side by InvoicingBuilder?) and what permission the sheet needs. Users must know whether their billing data has to be publicly shared. -->
+> **Note - Google Sheet Permissions:**
+> To allow the node to read rows directly without requiring separate Google OAuth credentials, the spreadsheet must be shared via a public link:
+>
+> 1. Open the spreadsheet in Google Sheets and click **Share** (top-right corner).
+> 2. Under **General access**, change the setting to **Anyone with the link** and set the role to **Viewer**.
+> 3. Click **Copy link** and paste it into the **Google Spreadsheet** field.
+>
+> *Security consideration:* Anyone with the link will be able to read the spreadsheet contents. Please ensure this complies with your organization's data privacy policies.
 
 How rows are mapped:
 
 - **Grouping:** rows are grouped into invoices using an identifier column such as `Invoice Number`, `Order ID`, or `Customer Name`. Consecutive rows with the same identifier become line items of one invoice and inherit its header values.
 - **Detected columns:** `Invoice Number`, `Date`, `Due Date`, `PO Number`, `Payment Terms`, `Ship To`, `Bill To`, `Notes`, `Terms`, `Description`, `Quantity`, `Rate`, `Tax`, `Amount`.
-- **Template placeholders:** placeholder values from the template designer are cleared before your data is applied, so sample data does not leak into the output.
 
 > A sample sheet is in [`sample/sample_bulk_invoice.csv`](sample/sample_bulk_invoice.csv). Import it into Google Sheets to try this mode.
 
@@ -159,14 +156,14 @@ How rows are mapped:
 
 ```json
 {
-	"success": true,
-	"invoiceCount": 1,
-	"format": "pdf",
-	"fileName": "invoice.pdf",
-	"source": "direct",
-	"invoiceIds": ["inv_987654321"],
-	"sendToClient": true,
-	"emailedTo": ["billing@acme.com"]
+    "success": true,
+    "invoiceCount": 1,
+    "format": "pdf",
+    "fileName": "invoice.pdf",
+    "source": "direct",
+    "invoiceIds": ["inv_987654321"],
+    "sendToClient": true,
+    "emailedTo": ["billing@acme.com"]
 }
 ```
 
@@ -185,7 +182,7 @@ Output: binary property `data` plus `success`, `invoiceId`, `format`, and `fileN
 
 #### Get
 
-Returns an invoice's metadata, line items, totals (subtotal, taxes, balance due), and payment status (`isPaid`).
+Returns an invoice's data, line items, totals (subtotal, taxes, balance due), and payment status (`isPaid`).
 
 | Parameter | Description                              |
 | --------- | ---------------------------------------- |
@@ -195,20 +192,20 @@ Returns an invoice's metadata, line items, totals (subtotal, taxes, balance due)
 
 Sets an invoice's payment status.
 
-| Parameter | Description                                                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Invoice   | Select an invoice or pass an invoice ID.                                                                                       |
-| Status    | `Paid` (default): sets `isPaid: true` and `balanceDue` to `0.00`. `Unpaid`: sets `isPaid: false` and restores the balance due. |
+| Parameter | Description                              |
+| --------- | ---------------------------------------- |
+| Invoice   | Select an invoice or pass an invoice ID. |
+| Status    | `Paid` (default) or `Unpaid`.            |
 
 Example output:
 
 ```json
 {
-	"success": true,
-	"message": "Invoice marked as paid successfully.",
-	"invoiceId": "inv_987654321",
-	"isPaid": true,
-	"balanceDue": "0.00"
+    "success": true,
+    "message": "Invoice marked as paid successfully.",
+    "invoiceId": "inv_987654321",
+    "isPaid": true,
+    "balanceDue": "0.00"
 }
 ```
 
@@ -226,7 +223,7 @@ Output: `success`, `message`, `invoiceId`.
 
 | Operation                 | Parameters                                                       | Notes                                                                         |
 | ------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Create**                | Name (required), Email, Bill To, Ship To                         |                                                                               |
+| **Create**                | Name, Email, Bill To, Ship To                                    |                                                                               |
 | **Update**                | Client; fields to change (`Name`, `Email`, `Bill To`, `Ship To`) | Only the fields you set are sent. Other fields are left unchanged.            |
 | **Get**                   | Client                                                           |                                                                               |
 | **Get Many**              | Return All, Limit (default `50`)                                 |                                                                               |
@@ -316,7 +313,7 @@ graph LR
 ```
 
 1. **Schedule Trigger** runs weekly or on demand.
-2. **InvoicingBuilder** with Resource `Invoice`, Operation `Create`, Data Source `Google Sheet`, your spreadsheet URL, Worksheet `Sheet1`, Format `PDF`.
+2. **InvoicingBuilder** with Resource `Invoice`, Operation `Create`, Data Source `Google Sheet`, your spreadsheet URL (shared as "Anyone with the link can view"), Worksheet `Sheet1`, Format `PDF`.
 3. **Gmail** (or any email node) sends the message with binary property `data` attached.
 
 ### C. Payment webhook to Mark as Paid
@@ -365,7 +362,7 @@ Record which reminders you sent, so a rerun does not email the same client twice
 | `429` rate limit             | Lower request frequency or batch size. The node reads the server's `retryAfter` value when provided. Be careful with automatic retries on operations that send email. |
 | Node missing after install   | Check the install succeeded, check n8n logs, confirm the package is in the environment that runs n8n, and restart n8n.                                                |
 | Fewer invoices than expected | The two-invoice cap. See [Limits](#limits).                                                                                                                           |
-| Email not sent               | Recipient address, the **Send to Client** / **Send to User** option, and your InvoicingBuilder email and template settings.                                           |                                                                               |
+| Email not sent               | Recipient address, the **Send to Client** / **Send to User** option, and your InvoicingBuilder email and template settings.                                           |     |
 
 With **Continue On Fail** enabled, a failed item returns an error object and the workflow continues. A successful execution does not prove every item succeeded, so inspect the output.
 
@@ -373,7 +370,7 @@ With **Continue On Fail** enabled, a failed item returns an error object and the
 
 - [InvoicingBuilder](https://invoicingbuilder.com)
 - [n8n community nodes documentation](https://docs.n8n.io/integrations/community-nodes/)
-- [Report an issue](https://github.com/REPLACE_WITH_ORG/n8n-nodes-invoicingbuilder/issues) <!-- VERIFY: replace with the real repository URL, matching package.json. -->
+- [Report an issue](https://github.com/InvoicingBuilder/n8n-nodes-invoicingbuilder/issues) <!-- VERIFY: replace with the real repository URL, matching package.json. -->
 
 ## Version history
 

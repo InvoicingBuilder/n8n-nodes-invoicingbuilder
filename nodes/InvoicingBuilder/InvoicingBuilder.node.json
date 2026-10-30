@@ -1,17 +1,19 @@
 {
-	"node": "n8n-nodes-invoicingbuilder",
+	"node": "@invoicing-builder/n8n-nodes-invoicing-builder",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
-	"categories": ["Finance & Accounting"],
+	"categories": [
+		"Finance & Accounting"
+	],
 	"resources": {
 		"credentialDocumentation": [
 			{
-				"url": "https://invoicingbuilder.com/docs"
+				"url": "https://github.com/InvoicingBuilder/n8n-nodes-invoicingbuilder/#credentials"
 			}
 		],
 		"primaryDocumentation": [
 			{
-				"url": "https://invoicingbuilder.com/docs"
+				"url": "https://github.com/InvoicingBuilder/n8n-nodes-invoicingbuilder"
 			}
 		]
 	}

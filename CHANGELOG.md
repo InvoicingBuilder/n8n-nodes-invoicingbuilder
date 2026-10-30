@@ -2,10 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0] - 2026-10-29
+## [0.1.0] - 2026-10-30
 
 ### Added
-- Initial release of `n8n-nodes-invoicingbuilder`.
+- Initial release of `@invoicing-builder/n8n-nodes-invoicing-builder`.
 - `InvoicingBuilder` programmatic node with 3 core resources:
   - **Invoice**:
     - `Create`: Support multi-source invoice generation from Google Sheets (auto-detecting columns and grouped line items) or Direct Workflow Data (dynamic parameter mapping, line items, and client linkage).

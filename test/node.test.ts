@@ -56,7 +56,7 @@ function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFun
 	const mockNode: INode = {
 		id: 'test_node_id',
 		name: 'InvoicingBuilder',
-		type: 'n8n-nodes-invoicingbuilder.invoicingBuilder',
+		type: '@invoicing-builder/n8n-nodes-invoicing-builder.invoicingBuilder',
 		typeVersion: 1,
 		position: [0, 0],
 		parameters: {},

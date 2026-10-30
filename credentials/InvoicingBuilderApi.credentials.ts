@@ -10,7 +10,7 @@ export class InvoicingBuilderApi implements ICredentialType {
 
 	displayName = 'InvoicingBuilder API';
 
-	documentationUrl = 'https://invoicingbuilder.com/docs';
+	documentationUrl = 'https://github.com/InvoicingBuilder/n8n-nodes-invoicingbuilder';
 
 	icon = {
 		light: 'file:../nodes/InvoicingBuilder/invoicingBuilder.svg',
