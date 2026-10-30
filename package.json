@@ -1,6 +1,6 @@
 {
   "name": "@invoicing-builder/n8n-nodes-invoicing-builder",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "n8n community node for InvoicingBuilder to create invoices, manage clients, generate financial reports, and analyse billing trends.",
   "license": "MIT",
   "homepage": "https://invoicingbuilder.com",
