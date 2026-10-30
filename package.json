@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "n8n community node for InvoicingBuilder to create invoices, manage clients, generate financial reports, and analyse billing trends.",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "homepage": "https://invoicingbuilder.com",
   "keywords": [
     "n8n-community-node-package",
