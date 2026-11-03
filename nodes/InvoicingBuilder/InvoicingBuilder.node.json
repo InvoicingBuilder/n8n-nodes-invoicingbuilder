@@ -1,5 +1,5 @@
 {
-	"node": "@invoicing-builder/n8n-nodes-invoicing-builder",
+	"node": "@invoicing-builder/n8n-nodes-invoicing-builder.invoicingBuilder",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": [
