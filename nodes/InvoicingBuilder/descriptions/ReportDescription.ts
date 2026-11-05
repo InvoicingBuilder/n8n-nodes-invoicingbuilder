@@ -31,73 +31,80 @@ export const reportOperations: INodeProperties[] = [
 
 export const reportFields: INodeProperties[] = [
 	{
-		displayName: 'From',
-		name: 'from',
-		type: 'dateTime',
-		default: '',
+		displayName: 'Filters',
+		name: 'filters',
+		type: 'collection',
+		placeholder: 'Add Filter',
+		default: {},
 		displayOptions: {
 			show: {
 				resource: ['report', 'invoice'],
 				operation: ['summary', 'generateReport'],
 			},
 		},
-		description: 'Start date in UTC (YYYY-MM-DD, inclusive)',
-	},
-	{
-		displayName: 'To',
-		name: 'to',
-		type: 'dateTime',
-		default: '',
-		displayOptions: {
-			show: {
-				resource: ['report', 'invoice'],
-				operation: ['summary', 'generateReport'],
-			},
-		},
-		description: 'End date in UTC (YYYY-MM-DD, inclusive)',
-	},
-	{
-		displayName: 'Status',
-		name: 'status',
-		type: 'options',
 		options: [
 			{
-				name: 'All',
-				value: 'all',
+				displayName: 'From',
+				name: 'from',
+				type: 'dateTime',
+				default: '',
+				description: 'Start date in UTC (YYYY-MM-DD, inclusive)',
 			},
 			{
-				name: 'Paid',
-				value: 'paid',
+				displayName: 'Status',
+				name: 'status',
+				type: 'options',
+				options: [
+					{
+						name: 'All',
+						value: 'all',
+					},
+					{
+						name: 'Paid',
+						value: 'paid',
+					},
+					{
+						name: 'Unpaid',
+						value: 'unpaid',
+					},
+					{
+						name: 'Overdue',
+						value: 'overdue',
+					},
+				],
+				default: 'all',
+				description: 'Invoice status filter',
 			},
 			{
-				name: 'Unpaid',
-				value: 'unpaid',
-			},
-			{
-				name: 'Overdue',
-				value: 'overdue',
+				displayName: 'To',
+				name: 'to',
+				type: 'dateTime',
+				default: '',
+				description: 'End date in UTC (YYYY-MM-DD, inclusive)',
 			},
 		],
-		default: 'all',
-		displayOptions: {
-			show: {
-				resource: ['report', 'invoice'],
-				operation: ['summary', 'generateReport'],
-			},
-		},
-		description: 'Invoice status filter',
 	},
 	{
-		displayName: 'Send to User',
-		name: 'sendToUser',
-		type: 'boolean',
-		default: false,
+		displayName: 'Options',
+		name: 'options',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
 		displayOptions: {
 			show: {
 				resource: ['report', 'invoice'],
 				operation: ['summary', 'generateReport'],
 			},
 		},
-		description: 'Whether to email the generated report to the current user (associated with the API key)',
+		options: [
+			{
+				displayName: 'Send to User',
+				name: 'sendToUser',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether to email the generated report to the current user (associated with the API key)',
+			},
+		],
 	},
 ];

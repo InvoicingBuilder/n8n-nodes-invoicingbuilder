@@ -49,10 +49,46 @@ async function executeSummaryReport(
 	context: IExecuteFunctions,
 	items: INodeExecutionData[],
 ): Promise<INodeExecutionData[][]> {
-	const fromRaw = context.getNodeParameter('from', 0, '') as string;
-	const toRaw = context.getNodeParameter('to', 0, '') as string;
-	const status = context.getNodeParameter('status', 0, 'all') as string;
-	const sendToUser = context.getNodeParameter('sendToUser', 0, false) as boolean;
+	const filters = context.getNodeParameter('filters', 0, {}) as {
+		from?: string;
+		to?: string;
+		status?: string;
+	};
+	const options = context.getNodeParameter('options', 0, {}) as {
+		sendToUser?: boolean;
+	};
+
+	let fallbackFrom = '';
+	let fallbackTo = '';
+	let fallbackStatus = 'all';
+	let fallbackSendToUser = false;
+	try {
+		fallbackFrom = context.getNodeParameter('from', 0, '') as string;
+	} catch {
+		// Ignore if not present
+	}
+	try {
+		fallbackTo = context.getNodeParameter('to', 0, '') as string;
+	} catch {
+		// Ignore if not present
+	}
+	try {
+		fallbackStatus = context.getNodeParameter('status', 0, 'all') as string;
+	} catch {
+		// Ignore if not present
+	}
+	try {
+		fallbackSendToUser = context.getNodeParameter('sendToUser', 0, false) as boolean;
+	} catch {
+		// Ignore if not present
+	}
+
+	const fromRaw =
+		filters.from !== undefined && filters.from !== '' ? filters.from : fallbackFrom;
+	const toRaw = filters.to !== undefined && filters.to !== '' ? filters.to : fallbackTo;
+	const status = filters.status || fallbackStatus || 'all';
+	const sendToUser =
+		typeof options.sendToUser === 'boolean' ? options.sendToUser : fallbackSendToUser;
 
 	const from = fromRaw ? fromRaw.split('T')[0] : undefined;
 	const to = toRaw ? toRaw.split('T')[0] : undefined;
@@ -97,9 +133,36 @@ async function executeTrendsReport(
 	items: INodeExecutionData[],
 ): Promise<INodeExecutionData[][]> {
 	const period = context.getNodeParameter('period', 0, 'monthly') as string;
-	const periods = context.getNodeParameter('periods', 0, undefined) as number | undefined;
-	const endDateRaw = context.getNodeParameter('endDate', 0, '') as string;
-	const sendToUser = context.getNodeParameter('sendToUser', 0, false) as boolean;
+	const options = context.getNodeParameter('options', 0, {}) as {
+		periods?: number;
+		endDate?: string;
+		sendToUser?: boolean;
+	};
+
+	let fallbackPeriods: number | undefined;
+	let fallbackEndDate = '';
+	let fallbackSendToUser = false;
+	try {
+		fallbackPeriods = context.getNodeParameter('periods', 0, undefined) as number | undefined;
+	} catch {
+		// Ignore if not present
+	}
+	try {
+		fallbackEndDate = context.getNodeParameter('endDate', 0, '') as string;
+	} catch {
+		// Ignore if not present
+	}
+	try {
+		fallbackSendToUser = context.getNodeParameter('sendToUser', 0, false) as boolean;
+	} catch {
+		// Ignore if not present
+	}
+
+	const periods = options.periods !== undefined ? options.periods : fallbackPeriods;
+	const endDateRaw =
+		options.endDate !== undefined && options.endDate !== '' ? options.endDate : fallbackEndDate;
+	const sendToUser =
+		typeof options.sendToUser === 'boolean' ? options.sendToUser : fallbackSendToUser;
 
 	const qs: IDataObject = {
 		period,
@@ -260,9 +323,34 @@ export class InvoicingBuilder implements INodeType {
 					try {
 						if (operation === 'create') {
 							const name = this.getNodeParameter('name', i) as string;
-							const email = this.getNodeParameter('email', i, '') as string;
-							const billTo = this.getNodeParameter('billTo', i, '') as string;
-							const shipTo = this.getNodeParameter('shipTo', i, '') as string;
+							const additionalFields = this.getNodeParameter('additionalFields', i, {}) as {
+								email?: string;
+								billTo?: string;
+								shipTo?: string;
+							};
+
+							let fallbackEmail = '';
+							let fallbackBillTo = '';
+							let fallbackShipTo = '';
+							try {
+								fallbackEmail = this.getNodeParameter('email', i, '') as string;
+							} catch {
+								// Ignore if not present
+							}
+							try {
+								fallbackBillTo = this.getNodeParameter('billTo', i, '') as string;
+							} catch {
+								// Ignore if not present
+							}
+							try {
+								fallbackShipTo = this.getNodeParameter('shipTo', i, '') as string;
+							} catch {
+								// Ignore if not present
+							}
+
+							const email = (additionalFields.email as string) || fallbackEmail;
+							const billTo = (additionalFields.billTo as string) || fallbackBillTo;
+							const shipTo = (additionalFields.shipTo as string) || fallbackShipTo;
 
 							const body: IDataObject = { name };
 							if (email) body.email = email;
@@ -570,7 +658,20 @@ export class InvoicingBuilder implements INodeType {
 					const source = this.getNodeParameter('source', 0, 'googleSheets') as string;
 					const templateId = extractResourceLocatorValue(this.getNodeParameter('templateId', 0));
 					const format = this.getNodeParameter('format', 0, 'pdf') as string;
-					const sendToClient = this.getNodeParameter('sendToClient', 0, false) as boolean;
+
+					const options = this.getNodeParameter('options', 0, {}) as {
+						sendToClient?: boolean;
+					};
+					let fallbackSendToClient = false;
+					try {
+						fallbackSendToClient = this.getNodeParameter('sendToClient', 0, false) as boolean;
+					} catch {
+						// Ignore if not present
+					}
+					const sendToClient =
+						typeof options.sendToClient === 'boolean'
+							? options.sendToClient
+							: fallbackSendToClient;
 
 					// Validate format
 					if (format !== 'pdf' && format !== 'png') {
@@ -645,10 +746,41 @@ export class InvoicingBuilder implements INodeType {
 
 						for (let i = 0; i < countToProcess; i++) {
 							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i, ''));
-							const invoiceNumber = this.getNodeParameter('invoiceNumber', i, '') as string;
-							const poNumber = this.getNodeParameter('poNumber', i, '') as string;
-							const issueDate = this.getNodeParameter('issueDate', i, '') as string;
-							const dueDate = this.getNodeParameter('dueDate', i, '') as string;
+							const additionalFields = this.getNodeParameter(
+								'additionalFields',
+								i,
+								{},
+							) as DirectAdditionalFields;
+
+							let fallbackInvoiceNumber = '';
+							let fallbackPoNumber = '';
+							let fallbackIssueDate = '';
+							let fallbackDueDate = '';
+							try {
+								fallbackInvoiceNumber = this.getNodeParameter('invoiceNumber', i, '') as string;
+							} catch {
+								// Ignore if not present
+							}
+							try {
+								fallbackPoNumber = this.getNodeParameter('poNumber', i, '') as string;
+							} catch {
+								// Ignore if not present
+							}
+							try {
+								fallbackIssueDate = this.getNodeParameter('issueDate', i, '') as string;
+							} catch {
+								// Ignore if not present
+							}
+							try {
+								fallbackDueDate = this.getNodeParameter('dueDate', i, '') as string;
+							} catch {
+								// Ignore if not present
+							}
+
+							const invoiceNumber = (additionalFields.invoiceNumber as string) || fallbackInvoiceNumber;
+							const poNumber = (additionalFields.poNumber as string) || fallbackPoNumber;
+							const issueDate = (additionalFields.issueDate as string) || fallbackIssueDate;
+							const dueDate = (additionalFields.dueDate as string) || fallbackDueDate;
 
 							if (!clientId) {
 								throw new NodeOperationError(
@@ -679,12 +811,6 @@ export class InvoicingBuilder implements INodeType {
 							const lineItemsParam = this.getNodeParameter('lineItems', i, {}) as {
 								item?: DirectLineItemInput[];
 							};
-
-							const additionalFields = this.getNodeParameter(
-								'additionalFields',
-								i,
-								{},
-							) as DirectAdditionalFields;
 
 							// Resolve line items: from parameter, or fallback to json.lineItems / json.items
 							let lineItems = lineItemsParam?.item || [];

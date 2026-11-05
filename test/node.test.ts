@@ -305,17 +305,18 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 			'spreadsheet',
 			'worksheet',
 			'clientId',
+			'lineItems',
+			'additionalFields',
+			'format',
+			'options',
+		]);
+
+		const unwanted = [
 			'invoiceNumber',
 			'poNumber',
 			'issueDate',
 			'dueDate',
-			'lineItems',
-			'additionalFields',
-			'format',
 			'sendToClient',
-		]);
-
-		const unwanted = [
 			'clientName',
 			'clientEmail',
 			'billTo',
@@ -349,7 +350,9 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 "Acme Inc","billing@acme.com","Consulting",5,100
 `,
 			parameters: {
-				sendToClient: true,
+				options: {
+					sendToClient: true,
+				},
 			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
@@ -878,11 +881,6 @@ describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
 				templateId: 'tmpl_123',
 				clientId: 'client_direct_1',
 				format: 'pdf',
-				invoiceNumber: 'INV-2026-001',
-				poNumber: 'PO-2026-999',
-				issueDate: '2026-10-28',
-				dueDate: '2026-11-28',
-				sendToClient: true,
 				lineItems: {
 					item: [
 						{
@@ -894,9 +892,16 @@ describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
 					],
 				},
 				additionalFields: {
+					invoiceNumber: 'INV-2026-001',
+					poNumber: 'PO-2026-999',
+					issueDate: '2026-10-28',
+					dueDate: '2026-11-28',
 					notes: 'Custom notes from workflow',
 					logo: 'https://example.com/logo.png',
 					signature: 'data:image/png;base64,sig123',
+				},
+				options: {
+					sendToClient: true,
 				},
 			},
 			httpHandler: async (opts) => {
@@ -1139,10 +1144,14 @@ describe('InvoicingBuilder Report Resource Workflow', () => {
 			parameters: {
 				resource: 'report',
 				operation: 'summary',
-				from: '2026-01-01',
-				to: '2026-10-28',
-				status: 'paid',
-				sendToUser: true,
+				filters: {
+					from: '2026-01-01',
+					to: '2026-10-28',
+					status: 'paid',
+				},
+				options: {
+					sendToUser: true,
+				},
 			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/n8n/reports/summary')) {
@@ -1173,8 +1182,10 @@ describe('InvoicingBuilder Report Resource Workflow', () => {
 				resource: 'report',
 				operation: 'trends',
 				period: 'quarterly',
-				periods: 4,
-				sendToUser: false,
+				options: {
+					periods: 4,
+					sendToUser: false,
+				},
 			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/n8n/reports/trends')) {
@@ -1199,16 +1210,18 @@ describe('InvoicingBuilder Report Resource Workflow', () => {
 describe('InvoicingBuilder Client Resource Workflow', () => {
 	const node = new InvoicingBuilder();
 
-	it('creates a client with full properties', async () => {
+	it('creates a client with full properties in additionalFields', async () => {
 		let capturedBody: IDataObject | undefined;
 		const context = createMockExecuteContext({
 			parameters: {
 				resource: 'client',
 				operation: 'create',
 				name: 'Stark Industries',
-				email: 'tony@stark.com',
-				billTo: '10880 Malibu Point',
-				shipTo: 'Avengers Compound',
+				additionalFields: {
+					email: 'tony@stark.com',
+					billTo: '10880 Malibu Point',
+					shipTo: 'Avengers Compound',
+				},
 			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/clients') && opts.method === 'POST') {
@@ -2167,6 +2180,318 @@ describe('InvoicingBuilder Client Resource Workflow', () => {
 				value: 'inv-10',
 				description: 'Date: 2026-10-01 | Balance: $500',
 			});
+		});
+	});
+
+	describe('Community Review - Optional Parameters Collections', () => {
+		it('Client Create with all optional fields in additionalFields', async () => {
+			let capturedBody: IDataObject | undefined;
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'client',
+					operation: 'create',
+					name: 'Acme Corp',
+					additionalFields: {
+						email: 'billing@acme.com',
+						billTo: '123 Billing Way',
+						shipTo: '456 Shipping Lane',
+					},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/clients') && opts.method === 'POST') {
+						capturedBody = opts.body as IDataObject;
+						return { id: 'client_1', name: 'Acme Corp' };
+					}
+					return {};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(capturedBody).toEqual({
+				name: 'Acme Corp',
+				email: 'billing@acme.com',
+				billTo: '123 Billing Way',
+				shipTo: '456 Shipping Lane',
+			});
+			expect(result[0][0].json.name).toBe('Acme Corp');
+		});
+
+		it('Client Create with empty additionalFields collection', async () => {
+			let capturedBody: IDataObject | undefined;
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'client',
+					operation: 'create',
+					name: 'Only Name Corp',
+					additionalFields: {},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/clients') && opts.method === 'POST') {
+						capturedBody = opts.body as IDataObject;
+						return { id: 'client_2', name: 'Only Name Corp' };
+					}
+					return {};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(capturedBody).toEqual({
+				name: 'Only Name Corp',
+			});
+			expect(capturedBody).not.toHaveProperty('email');
+			expect(capturedBody).not.toHaveProperty('billTo');
+			expect(capturedBody).not.toHaveProperty('shipTo');
+			expect(result[0][0].json.id).toBe('client_2');
+		});
+
+		it('Invoice Create with additionalFields and options populated', async () => {
+			let capturedBody: {
+				invoices: Array<{
+					fields: Record<string, unknown>;
+				}>;
+				sendToClient?: boolean;
+			} | null = null;
+
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'create',
+					source: 'direct',
+					templateId: 'tmpl_123',
+					clientId: 'client_1',
+					format: 'pdf',
+					lineItems: {
+						item: [{ description: 'Test Item', quantity: 2, rate: 50 }],
+					},
+					additionalFields: {
+						invoiceNumber: 'INV-COL-99',
+						poNumber: 'PO-COL-88',
+						issueDate: '2026-11-01',
+						dueDate: '2026-12-01',
+					},
+					options: {
+						sendToClient: true,
+					},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/clients/client_1')) {
+						return { id: 'client_1', name: 'Acme' };
+					}
+					if (opts.url?.includes('/api/v1/templates/fields')) {
+						return { fields: [{ id: 'tbl_1', type: 'table' }] };
+					}
+					if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+						capturedBody = opts.body as typeof capturedBody;
+						return {
+							statusCode: 200,
+							headers: { 'x-invoice-count': '1', 'x-invoice-ids': 'inv_col_1' },
+							body: Buffer.from('%PDF test'),
+						};
+					}
+					return {};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(capturedBody).not.toBeNull();
+			expect(capturedBody!.sendToClient).toBe(true);
+			const fields = capturedBody!.invoices[0].fields;
+			expect(fields.invoiceNumber).toBe('INV-COL-99');
+			expect(fields.poNumber).toBe('PO-COL-88');
+			expect(fields.customDate).toBe('2026-11-01');
+			expect(fields.dueDate).toBe('2026-12-01');
+			expect(result[0][0].json.sendToClient).toBe(true);
+		});
+
+		it('Invoice Create with empty additionalFields and sendToClient: false in options', async () => {
+			let capturedBody: {
+				invoices: Array<{
+					fields: Record<string, unknown>;
+				}>;
+				sendToClient?: boolean;
+			} | null = null;
+
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'invoice',
+					operation: 'create',
+					source: 'direct',
+					templateId: 'tmpl_123',
+					clientId: 'client_1',
+					format: 'pdf',
+					lineItems: {
+						item: [{ description: 'Item 1', quantity: 1, rate: 100 }],
+					},
+					additionalFields: {},
+					options: {
+						sendToClient: false,
+					},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/clients/client_1')) {
+						return { id: 'client_1', name: 'Acme' };
+					}
+					if (opts.url?.includes('/api/v1/templates/fields')) {
+						return { fields: [{ id: 'tbl_1', type: 'table' }] };
+					}
+					if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+						capturedBody = opts.body as typeof capturedBody;
+						return {
+							statusCode: 200,
+							headers: { 'x-invoice-count': '1', 'x-invoice-ids': 'inv_empty_1' },
+							body: Buffer.from('%PDF test'),
+						};
+					}
+					return {};
+				},
+			});
+
+			const result = await node.execute.call(context);
+			expect(capturedBody).not.toBeNull();
+			expect(capturedBody!.sendToClient).toBe(false);
+			expect(result[0][0].json.sendToClient).toBeUndefined();
+		});
+
+		it('Report Summary with filters and options populated', async () => {
+			let capturedQs: IDataObject | undefined;
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'report',
+					operation: 'summary',
+					filters: {
+						from: '2026-05-01',
+						to: '2026-06-01',
+						status: 'overdue',
+					},
+					options: {
+						sendToUser: true,
+					},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/n8n/reports/summary')) {
+						capturedQs = opts.qs as IDataObject;
+						return { generatedAt: '2026-06-01T00:00:00Z', currencies: [] };
+					}
+					return {};
+				},
+			});
+
+			await node.execute.call(context);
+			expect(capturedQs).toEqual({
+				status: 'overdue',
+				from: '2026-05-01',
+				to: '2026-06-01',
+				sendToUser: true,
+			});
+		});
+
+		it('Report Summary with sendToUser: false in options', async () => {
+			let capturedQs: IDataObject | undefined;
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'report',
+					operation: 'summary',
+					filters: {
+						status: 'paid',
+					},
+					options: {
+						sendToUser: false,
+					},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/n8n/reports/summary')) {
+						capturedQs = opts.qs as IDataObject;
+						return { generatedAt: '2026-06-01T00:00:00Z', currencies: [] };
+					}
+					return {};
+				},
+			});
+
+			await node.execute.call(context);
+			expect(capturedQs?.status).toBe('paid');
+			expect(capturedQs?.sendToUser).toBeUndefined();
+		});
+
+		it('Report Summary with empty filters and options collections', async () => {
+			let capturedQs: IDataObject | undefined;
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'report',
+					operation: 'summary',
+					filters: {},
+					options: {},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/n8n/reports/summary')) {
+						capturedQs = opts.qs as IDataObject;
+						return { generatedAt: '2026-06-01T00:00:00Z', currencies: [] };
+					}
+					return {};
+				},
+			});
+
+			await node.execute.call(context);
+			expect(capturedQs).toEqual({
+				status: 'all',
+			});
+		});
+
+		it('Report Analyse Trends with options (periods, endDate, sendToUser: true)', async () => {
+			let capturedQs: IDataObject | undefined;
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'report',
+					operation: 'trends',
+					period: 'yearly',
+					options: {
+						periods: 5,
+						endDate: '2026-12-31',
+						sendToUser: true,
+					},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/n8n/reports/trends')) {
+						capturedQs = opts.qs as IDataObject;
+						return { generatedAt: '2026-12-31T00:00:00Z', series: [] };
+					}
+					return {};
+				},
+			});
+
+			await node.execute.call(context);
+			expect(capturedQs).toEqual({
+				period: 'yearly',
+				periods: 5,
+				endDate: '2026-12-31',
+				sendToUser: true,
+			});
+		});
+
+		it('Report Analyse Trends with empty options collection and sendToUser: false', async () => {
+			let capturedQs: IDataObject | undefined;
+			const context = createMockExecuteContext({
+				parameters: {
+					resource: 'report',
+					operation: 'trends',
+					period: 'monthly',
+					options: {
+						sendToUser: false,
+					},
+				},
+				httpHandler: async (opts) => {
+					if (opts.url?.includes('/api/v1/n8n/reports/trends')) {
+						capturedQs = opts.qs as IDataObject;
+						return { generatedAt: '2026-12-31T00:00:00Z', series: [] };
+					}
+					return {};
+				},
+			});
+
+			await node.execute.call(context);
+			expect(capturedQs).toEqual({
+				period: 'monthly',
+			});
+			expect(capturedQs?.sendToUser).toBeUndefined();
 		});
 	});
 });

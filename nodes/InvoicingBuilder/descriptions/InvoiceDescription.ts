@@ -205,64 +205,6 @@ export const invoiceFields: INodeProperties[] = [
 			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 	},
 	{
-		displayName: 'Invoice Number',
-		name: 'invoiceNumber',
-		type: 'string',
-		default: '',
-		placeholder: 'e.g. INV-1001',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-				source: ['direct'],
-			},
-		},
-		description: 'Custom invoice number. If empty, the template default is preserved.',
-	},
-	{
-		displayName: 'PO Number',
-		name: 'poNumber',
-		type: 'string',
-		default: '',
-		placeholder: 'e.g. PO-98765',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-				source: ['direct'],
-			},
-		},
-		description: 'Purchase Order number',
-	},
-	{
-		displayName: 'Invoice Date',
-		name: 'issueDate',
-		type: 'dateTime',
-		default: '',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-				source: ['direct'],
-			},
-		},
-		description: 'Issue date in UTC (YYYY-MM-DD)',
-	},
-	{
-		displayName: 'Due Date',
-		name: 'dueDate',
-		type: 'dateTime',
-		default: '',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-				source: ['direct'],
-			},
-		},
-		description: 'Payment due date in UTC (YYYY-MM-DD)',
-	},
-	{
 		displayName: 'Line Items',
 		name: 'lineItems',
 		type: 'fixedCollection',
@@ -356,6 +298,28 @@ export const invoiceFields: INodeProperties[] = [
 				description: 'Raw JSON object of field mappings or component values for advanced template customization',
 			},
 			{
+				displayName: 'Due Date',
+				name: 'dueDate',
+				type: 'dateTime',
+				default: '',
+				description: 'Payment due date in UTC (YYYY-MM-DD)',
+			},
+			{
+				displayName: 'Invoice Date',
+				name: 'issueDate',
+				type: 'dateTime',
+				default: '',
+				description: 'Issue date in UTC (YYYY-MM-DD)',
+			},
+			{
+				displayName: 'Invoice Number',
+				name: 'invoiceNumber',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. INV-1001',
+				description: 'Custom invoice number. If empty, the template default is preserved.',
+			},
+			{
 				displayName: 'Logo (URL or Base64)',
 				name: 'logo',
 				type: 'string',
@@ -379,6 +343,14 @@ export const invoiceFields: INodeProperties[] = [
 				default: '',
 				placeholder: 'e.g. Net 30',
 				description: 'Payment terms label or description',
+			},
+			{
+				displayName: 'PO Number',
+				name: 'poNumber',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. PO-98765',
+				description: 'Purchase Order number',
 			},
 			{
 				displayName: 'Signature (URL or Base64)',
@@ -424,17 +396,26 @@ export const invoiceFields: INodeProperties[] = [
 		description: 'Output document format',
 	},
 	{
-		displayName: 'Send to Client',
-		name: 'sendToClient',
-		type: 'boolean',
-		default: false,
+		displayName: 'Options',
+		name: 'options',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
 		displayOptions: {
 			show: {
 				resource: ['invoice'],
 				operation: ['create'],
 			},
 		},
-		description: 'Whether to email the generated invoice to the client email',
+		options: [
+			{
+				displayName: 'Send to Client',
+				name: 'sendToClient',
+				type: 'boolean',
+				default: false,
+				description: 'Whether to email the generated invoice to the client email',
+			},
+		],
 	},
 
 	// ----------------------------------

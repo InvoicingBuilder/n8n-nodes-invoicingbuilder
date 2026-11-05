@@ -92,24 +92,22 @@ The **InvoicingBuilder** node has three resources.
 
 Common parameters:
 
-| Parameter      | Description                                                                                   |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| Template       | Template from your account.                                                                   |
-| Data Source    | `Direct Input / Workflow Data` or `Google Sheet`.                                             |
-| Format         | `PDF` (default) or `PNG`.                                                                     |
-| Send to Client | Emails the rendered invoice to the client. See [side effects](#operations-with-side-effects). |
+| Parameter   | Description                                       |
+| ----------- | ------------------------------------------------- |
+| Template    | Template from your account.                       |
+| Data Source | `Direct Input / Workflow Data` or `Google Sheet`. |
+| Format      | `PDF` (default) or `PNG`.                         |
+| Options     | `Send to Client` (emails the rendered invoice to the client. See [side effects](#operations-with-side-effects)). |
 
 **Data Source: Direct Input / Workflow Data**
 
 Build the invoice from data in your workflow.
 
-| Parameter               | Description                                                          |
-| ----------------------- | -------------------------------------------------------------------- |
-| Client                  | Select a client from your client list.                               |
-| Invoice Number          | For example `INV-2026-001`. If empty, the template default is empty. |
-| PO Number               | Optional.                                                            |
-| Invoice Date / Due Date | UTC dates in `YYYY-MM-DD`.                                           |
-| Line Items              | See below.                                                           |
+| Parameter         | Description                                                          |
+| ----------------- | -------------------------------------------------------------------- |
+| Client            | Select a client from your client list.                               |
+| Line Items        | See below.                                                           |
+| Additional Fields | Optional fields including Invoice Number, PO Number, Invoice Date, Due Date, and more (see below). |
 
 Line item fields:
 
@@ -122,7 +120,7 @@ Line item fields:
 
 If you add no line items, incoming items that contain a `lineItems` or `items` array are mapped automatically.
 
-Additional fields: Amount Paid, Notes, Terms & Conditions, Payment Terms (for example `Net 30`), Logo (URL or Base64), Signature (URL or Base64), and Custom Fields (JSON) for template-specific values.
+Additional fields: Invoice Number, PO Number, Invoice Date, Due Date, Amount Paid, Notes, Terms & Conditions, Payment Terms (for example `Net 30`), Logo (URL or Base64), Signature (URL or Base64), and Custom Fields (JSON) for template-specific values.
 
 **Data Source: Google Sheet**
 
@@ -223,7 +221,7 @@ Output: `success`, `message`, `invoiceId`.
 
 | Operation                 | Parameters                                                       | Notes                                                                         |
 | ------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Create**                | Name, Email, Bill To, Ship To                                    |                                                                               |
+| **Create**                | Name; Additional Fields (`Bill To`, `Email`, `Ship To`)          |                                                                               |
 | **Update**                | Client; fields to change (`Name`, `Email`, `Bill To`, `Ship To`) | Only the fields you set are sent. Other fields are left unchanged.            |
 | **Get**                   | Client                                                           |                                                                               |
 | **Get Many**              | Return All, Limit (default `50`)                                 |                                                                               |
@@ -236,22 +234,19 @@ Reports group results by currency. Currencies are never summed together.
 
 #### Summary
 
-| Parameter    | Description                                                       |
-| ------------ | ----------------------------------------------------------------- |
-| From / To    | Optional UTC dates (`YYYY-MM-DD`). `From` must not be after `To`. |
-| Status       | `All`, `Paid`, `Unpaid`, or `Overdue`.                            |
-| Send to User | Also emails the report to the account owner.                      |
+| Parameter | Description                                                                                                                |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Filters   | Optional filters: `From` / `To` (UTC dates `YYYY-MM-DD`, `From` <= `To`), and `Status` (`All`, `Paid`, `Unpaid`, `Overdue`). |
+| Options   | `Send to User` (emails the report to the account owner).                                                                   |
 
 Output: totals and zero-filled monthly breakdowns per currency. Summary returns aggregates, not a list of invoices or clients.
 
 #### Analyse Trends
 
-| Parameter         | Description                                                                                                          |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Period            | `Monthly`, `Quarterly`, or `Yearly`.                                                                                 |
-| Number of Periods | 2 to 36. Defaults: 12 monthly, 8 quarterly, 5 yearly.                                                                |
-| End Date          | Optional anchor date. The series ends with the period containing it, and the last period may have `isPartial: true`. |
-| Send to User      | Also emails the report to the account owner.                                                                         |
+| Parameter | Description                                                                                                                                           |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Period    | `Monthly` (default), `Quarterly`, or `Yearly`. Required.                                                                                              |
+| Options   | `End Date` (optional anchor date), `Number of Periods` (2 to 36; defaults: 12 monthly, 8 quarterly, 5 yearly), `Send to User` (emails account owner). |
 
 Output: per-period revenue and invoice count, with period-over-period absolute and percentage change, per currency.
 

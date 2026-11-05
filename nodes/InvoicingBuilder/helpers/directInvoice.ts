@@ -10,8 +10,11 @@ export interface DirectLineItemInput {
 }
 
 export interface DirectAdditionalFields {
-	shipTo?: string;
+	invoiceNumber?: string;
 	poNumber?: string;
+	issueDate?: string;
+	dueDate?: string;
+	shipTo?: string;
 	paymentTerms?: string;
 	notes?: string;
 	terms?: string;
@@ -131,10 +134,11 @@ export function buildDirectInvoice(options: BuildDirectInvoiceOptions): BuiltInv
 		if (tf) fields[tf.id] = clientEmail.trim();
 	}
 
-	if (invoiceNumber && invoiceNumber.trim()) {
-		fields.invoiceNumber = invoiceNumber.trim();
+	const resolvedInvoiceNumber = invoiceNumber?.trim() || additionalFields.invoiceNumber?.trim();
+	if (resolvedInvoiceNumber) {
+		fields.invoiceNumber = resolvedInvoiceNumber;
 		const tf = templateFields.find((f) => f.type === 'invoiceNumber');
-		if (tf) fields[tf.id] = invoiceNumber.trim();
+		if (tf) fields[tf.id] = resolvedInvoiceNumber;
 	}
 
 	const resolvedPoNumber = poNumber?.trim() || additionalFields.poNumber?.trim();
@@ -144,16 +148,18 @@ export function buildDirectInvoice(options: BuildDirectInvoiceOptions): BuiltInv
 		if (tf) fields[tf.id] = resolvedPoNumber;
 	}
 
-	if (issueDate && issueDate.trim()) {
-		const cleanDate = issueDate.includes('T') ? issueDate.split('T')[0] : issueDate.trim();
+	const resolvedIssueDate = issueDate?.trim() || additionalFields.issueDate?.trim();
+	if (resolvedIssueDate) {
+		const cleanDate = resolvedIssueDate.includes('T') ? resolvedIssueDate.split('T')[0] : resolvedIssueDate.trim();
 		fields.customDate = cleanDate;
 		fields.date = cleanDate;
 		const tf = templateFields.find((f) => f.type === 'customDate' || f.type === 'date');
 		if (tf) fields[tf.id] = cleanDate;
 	}
 
-	if (dueDate && dueDate.trim()) {
-		const cleanDueDate = dueDate.includes('T') ? dueDate.split('T')[0] : dueDate.trim();
+	const resolvedDueDate = dueDate?.trim() || additionalFields.dueDate?.trim();
+	if (resolvedDueDate) {
+		const cleanDueDate = resolvedDueDate.includes('T') ? resolvedDueDate.split('T')[0] : resolvedDueDate.trim();
 		fields.dueDate = cleanDueDate;
 		const tf = templateFields.find((f) => f.type === 'dueDate');
 		if (tf) fields[tf.id] = cleanDueDate;

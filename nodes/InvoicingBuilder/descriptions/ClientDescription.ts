@@ -119,52 +119,49 @@ export const clientFields: INodeProperties[] = [
 		description: 'The name of the client or company',
 	},
 	{
-		displayName: 'Email',
-		name: 'email',
-		type: 'string',
-		default: '',
-		placeholder: 'e.g. billing@acme.com',
+		displayName: 'Additional Fields',
+		name: 'additionalFields',
+		type: 'collection',
+		placeholder: 'Add Field',
+		default: {},
 		displayOptions: {
 			show: {
 				resource: ['client'],
 				operation: ['create'],
 			},
 		},
-		description: 'The primary billing email address for the client',
-	},
-	{
-		displayName: 'Bill To',
-		name: 'billTo',
-		type: 'string',
-		typeOptions: {
-			rows: 3,
-		},
-		default: '',
-		placeholder: 'Acme Corporation\n123 Innovation Way\nSan Francisco, CA 94105',
-		displayOptions: {
-			show: {
-				resource: ['client'],
-				operation: ['create'],
+		options: [
+			{
+				displayName: 'Bill To',
+				name: 'billTo',
+				type: 'string',
+				typeOptions: {
+					rows: 3,
+				},
+				default: '',
+				placeholder: 'Acme Corporation\n123 Innovation Way\nSan Francisco, CA 94105',
+				description: 'Default billing address and notes for this client',
 			},
-		},
-		description: 'Default billing address and notes for this client',
-	},
-	{
-		displayName: 'Ship To',
-		name: 'shipTo',
-		type: 'string',
-		typeOptions: {
-			rows: 3,
-		},
-		default: '',
-		placeholder: 'Acme Warehouse\n789 Industrial Rd\nSan Francisco, CA 94105',
-		displayOptions: {
-			show: {
-				resource: ['client'],
-				operation: ['create'],
+			{
+				displayName: 'Email',
+				name: 'email',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. billing@acme.com',
+				description: 'The primary billing email address for the client',
 			},
-		},
-		description: 'Default shipping address for this client',
+			{
+				displayName: 'Ship To',
+				name: 'shipTo',
+				type: 'string',
+				typeOptions: {
+					rows: 3,
+				},
+				default: '',
+				placeholder: 'Acme Warehouse\n789 Industrial Rd\nSan Francisco, CA 94105',
+				description: 'Default shipping address for this client',
+			},
+		],
 	},
 
 	// ----------------------------------

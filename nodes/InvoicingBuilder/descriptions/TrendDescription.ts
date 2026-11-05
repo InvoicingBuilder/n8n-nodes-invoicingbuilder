@@ -30,48 +30,46 @@ export const trendFields: INodeProperties[] = [
 		description: 'Trend grouping frequency. The final period in the series may be partial (isPartial: true).',
 	},
 	{
-		displayName: 'Number of Periods',
-		name: 'periods',
-		type: 'number',
-		typeOptions: {
-			minValue: 2,
-			maxValue: 36,
-		},
-		default: 12,
+		displayName: 'Options',
+		name: 'options',
+		type: 'collection',
+		placeholder: 'Add Option',
+		default: {},
 		displayOptions: {
 			show: {
 				resource: ['report', 'invoice'],
 				operation: ['trends', 'analyseTrends'],
 			},
 		},
-		description:
-			'Number of historical periods to include (2-36). Defaults: 12 (monthly), 8 (quarterly), 5 (yearly). Leave empty to use the backend default.',
-	},
-	{
-		displayName: 'End Date',
-		name: 'endDate',
-		type: 'dateTime',
-		default: '',
-		displayOptions: {
-			show: {
-				resource: ['report', 'invoice'],
-				operation: ['trends', 'analyseTrends'],
+		options: [
+			{
+				displayName: 'End Date',
+				name: 'endDate',
+				type: 'dateTime',
+				default: '',
+				description:
+					'Anchor end date in UTC (YYYY-MM-DD). Series ends with the period containing it. Note that the final period may be partial (isPartial: true).',
 			},
-		},
-		description:
-			'Anchor end date in UTC (YYYY-MM-DD). Series ends with the period containing it. Note that the final period may be partial (isPartial: true).',
-	},
-	{
-		displayName: 'Send to User',
-		name: 'sendToUser',
-		type: 'boolean',
-		default: false,
-		displayOptions: {
-			show: {
-				resource: ['report', 'invoice'],
-				operation: ['trends', 'analyseTrends'],
+			{
+				displayName: 'Number of Periods',
+				name: 'periods',
+				type: 'number',
+				typeOptions: {
+					minValue: 2,
+					maxValue: 36,
+				},
+				default: 12,
+				description:
+					'Number of historical periods to include (2-36). Defaults: 12 (monthly), 8 (quarterly), 5 (yearly). Leave empty to use the backend default.',
 			},
-		},
-		description: 'Whether to email the trend analysis report to the current user (associated with the API key)',
+			{
+				displayName: 'Send to User',
+				name: 'sendToUser',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether to email the trend analysis report to the current user (associated with the API key)',
+			},
+		],
 	},
 ];
