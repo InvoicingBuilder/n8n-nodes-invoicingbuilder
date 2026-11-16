@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@invoicing-builder/n8n-nodes-invoicing-builder)](https://www.npmjs.com/package/@invoicing-builder/n8n-nodes-invoicing-builder)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [n8n](https://n8n.io/) community node for [InvoicingBuilder](https://invoicingbuilder.com). Create invoices from workflow data or Google Sheets, manage clients, update payment status, send payment reminders, download rendered invoices, and pull financial reports, all from your n8n workflows.
+An [n8n](https://n8n.io/) community node for [InvoicingBuilder](https://invoicingbuilder.com). Create invoices from workflow data, manage clients, update payment status, send payment reminders, download rendered invoices, and pull financial reports, all from your n8n workflows.
 
 n8n is a [fair-code licensed](https://docs.n8n.io/sustainable-use-license/) workflow automation platform.
 
@@ -19,6 +19,7 @@ n8n is a [fair-code licensed](https://docs.n8n.io/sustainable-use-license/) work
   - [Invoice](#invoice)
   - [Client](#client)
   - [Report](#report)
+- [Using spreadsheet data](#using-spreadsheet-data)
 - [Operations with side effects](#operations-with-side-effects)
 - [Limits](#limits)
 - [Using the node as an AI Agent tool](#using-the-node-as-an-ai-agent-tool)
@@ -90,62 +91,30 @@ The **InvoicingBuilder** node has three resources.
 
 #### Create
 
-Common parameters:
+Create an invoice from incoming workflow data.
 
-| Parameter   | Description                                       |
-| ----------- | ------------------------------------------------- |
-| Template    | Template from your account.                       |
-| Data Source | `Direct Input / Workflow Data` or `Google Sheet`. |
-| Format      | `PDF` (default) or `PNG`.                         |
-| Options     | `Send to Client` (emails the rendered invoice to the client. See [side effects](#operations-with-side-effects)). |
-
-**Data Source: Direct Input / Workflow Data**
-
-Build the invoice from data in your workflow.
-
-| Parameter         | Description                                                          |
-| ----------------- | -------------------------------------------------------------------- |
-| Client            | Select a client from your client list.                               |
-| Line Items        | See below.                                                           |
-| Additional Fields | Optional fields including Invoice Number, PO Number, Invoice Date, Due Date, and more (see below). |
+| Parameter         | Description                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Template          | Template from your account.                                                                                       |
+| Client            | Select a client from your client list or specify an ID using an expression.                                       |
+| Line Items        | Line items to include in the invoice table (see below).                                                           |
+| Additional Fields | Optional fields including Invoice Number, PO Number, Invoice Date, Due Date, and more (see below).                |
+| Format            | `PDF` (default) or `PNG`.                                                                                         |
+| Options           | `Send to Client` (emails the rendered invoice to the client. See [side effects](#operations-with-side-effects)).   |
 
 Line item fields:
 
-| Field        | Description                                     |
-| ------------ | ----------------------------------------------- |
-| Description  | Required.                                       |
-| Quantity     | Default `1`.                                    |
-| Rate / Price | Price per unit.                                 |
-| Tax (%)      | Optional percentage, for example `10` or `10%`. |
+| Field        | Description                                                   |
+| ------------ | ------------------------------------------------------------- |
+| Description  | Required. Description of the product or service.              |
+| Quantity     | Quantity of items (default `1`).                              |
+| Rate / Price | Price or rate per unit.                                       |
+| Tax (%)      | Optional percentage, for example `10` or `10%`.               |
+| Amount       | Optional item total. If omitted, calculated as Qty * Rate.    |
 
-If you add no line items, incoming items that contain a `lineItems` or `items` array are mapped automatically.
+If you add no line items in the node parameters, incoming items that contain a `lineItems`, `items`, `data`, or `rows` array are mapped automatically.
 
 Additional fields: Invoice Number, PO Number, Invoice Date, Due Date, Amount Paid, Notes, Terms & Conditions, Payment Terms (for example `Net 30`), Logo (URL or Base64), Signature (URL or Base64), and Custom Fields (JSON) for template-specific values.
-
-**Data Source: Google Sheet**
-
-Reads rows from a worksheet, groups rows into invoices, and renders them.
-
-| Parameter          | Description                                    |
-| ------------------ | ---------------------------------------------- |
-| Google Spreadsheet | Google Spreadsheet URL or Spreadsheet ID.      |
-| Worksheet          | Worksheet name. Defaults to `Sheet1`.          |
-
-> **Note - Google Sheet Permissions:**
-> To allow the node to read rows directly without requiring separate Google OAuth credentials, the spreadsheet must be shared via a public link:
->
-> 1. Open the spreadsheet in Google Sheets and click **Share** (top-right corner).
-> 2. Under **General access**, change the setting to **Anyone with the link** and set the role to **Viewer**.
-> 3. Click **Copy link** and paste it into the **Google Spreadsheet** field.
->
-> *Security consideration:* Anyone with the link will be able to read the spreadsheet contents. Please ensure this complies with your organization's data privacy policies.
-
-How rows are mapped:
-
-- **Grouping:** rows are grouped into invoices using an identifier column such as `Invoice Number`, `Order ID`, or `Customer Name`. Consecutive rows with the same identifier become line items of one invoice and inherit its header values.
-- **Detected columns:** `Invoice Number`, `Date`, `Due Date`, `PO Number`, `Payment Terms`, `Ship To`, `Bill To`, `Notes`, `Terms`, `Description`, `Quantity`, `Rate`, `Tax`, `Amount`.
-
-> A sample sheet is in [`sample/sample_bulk_invoice.csv`](sample/sample_bulk_invoice.csv). Import it into Google Sheets to try this mode.
 
 **Output**
 
@@ -158,7 +127,6 @@ How rows are mapped:
     "invoiceCount": 1,
     "format": "pdf",
     "fileName": "invoice.pdf",
-    "source": "direct",
     "invoiceIds": ["inv_987654321"],
     "sendToClient": true,
     "emailedTo": ["billing@acme.com"]
@@ -250,6 +218,34 @@ Output: totals and zero-filled monthly breakdowns per currency. Summary returns 
 
 Output: per-period revenue and invoice count, with period-over-period absolute and percentage change, per currency.
 
+## Using spreadsheet data
+
+To generate invoices from external tabular sources (such as a Google Sheets node or CSV files):
+
+```mermaid
+graph LR
+    A[Google Sheets Node] --> B[Aggregate Node]
+    B --> C[InvoicingBuilder: Create Invoice]
+```
+
+1. **Read rows:** Use n8n's **Google Sheets** node (or another spreadsheet / table node) to read rows from your sheet.
+2. **Aggregate rows (if multiple rows belong to one invoice):** Add n8n's **Aggregate** node to combine incoming item rows into an array under a single field (for example, `lineItems`).
+3. **Connect InvoicingBuilder:**
+   - Resource: `Invoice`, Operation: `Create`.
+   - Select your **Template** and **Client Name or ID**.
+   - Under **Line Items**, enable expression mode and map the array: `{{ $json.lineItems }}`.
+   - Alternatively, leave **Line Items** blank if your aggregated item outputs an array under `lineItems`, `items`, `data`, or `rows`.
+
+Example field mapping between sheet columns and line item fields:
+
+| Sheet Column / Key             | InvoicingBuilder Field | Notes                                        |
+| ------------------------------ | ---------------------- | -------------------------------------------- |
+| `Description`, `Item`, `Name`  | `description`          | Item or service description (Required)       |
+| `Quantity`, `Qty`, `Count`     | `quantity`             | Units or hours (default `1`)                 |
+| `Rate`, `Price`, `UnitPrice`   | `rate`                 | Price per unit (default `0`)                 |
+| `Tax`                          | `tax`                  | Tax percentage (e.g. `10` or `10%`)          |
+| `Amount`, `Total`              | `amount`               | Optional. Auto-calculated as `Qty * Rate`    |
+
 ## Operations with side effects
 
 | Operation                                | Effect                                             | Recommendation                                                                            |
@@ -271,10 +267,7 @@ If you enable n8n's **Retry On Fail** for any of these, make sure a repeated cal
 - With 2 invoices, you get one `invoices.zip`.
 - With more than 2, **only the first 2 are processed and the rest are ignored.** Check `invoiceCount` in the output rather than assuming every input was invoiced.
 
-How to handle larger volumes:
-
-- **Direct Input:** use **Loop Over Items** (Split in Batches) with batch size `2`.
-- **Google Sheet source:** the node reads the worksheet itself, so Loop Over Items cannot split its rows. For more than two invoices, read the sheet with n8n's Google Sheets node, group rows into invoices, and use **Direct Input** mode with a loop.
+To process more than two invoices, use n8n's **Loop Over Items** (Split in Batches) with batch size `2`.
 
 ## Example workflows
 
@@ -289,7 +282,7 @@ graph LR
 ```
 
 1. **Webhook** receives `{ "orderId": "ORD-99", "clientId": "cl_123", "items": [...] }`.
-2. **InvoicingBuilder** with Resource `Invoice`, Operation `Create`, Data Source `Direct Input / Workflow Data`:
+2. **InvoicingBuilder** with Resource `Invoice`, Operation `Create`:
    - Client (ID mode): `{{ $json.body.clientId }}`
    - Invoice Number: `{{ $json.body.orderId }}`
    - Send to Client: `true`
@@ -297,19 +290,19 @@ graph LR
 
 Run it once with Send to Client off and inspect the output before enabling email.
 
-### B. Create invoices from a Google Sheet and email the PDF
-
-Handles up to two invoices per run. See [Limits](#limits).
+### B. Create invoices from tabular data and email the PDF
 
 ```mermaid
 graph LR
-    A[Schedule Trigger] --> B[InvoicingBuilder: Create from Sheet]
-    B --> C[Gmail: attach binary data]
+    A[Data Trigger / Reader] --> B[Aggregate]
+    B --> C[InvoicingBuilder: Create Invoice]
+    C --> D[Email Node]
 ```
 
-1. **Schedule Trigger** runs weekly or on demand.
-2. **InvoicingBuilder** with Resource `Invoice`, Operation `Create`, Data Source `Google Sheet`, your spreadsheet URL (shared as "Anyone with the link can view"), Worksheet `Sheet1`, Format `PDF`.
-3. **Gmail** (or any email node) sends the message with binary property `data` attached.
+1. **Trigger / Data Reader** reads records for the invoice.
+2. **Aggregate** groups records into an array of line items (`lineItems`).
+3. **InvoicingBuilder** with Resource `Invoice`, Operation `Create`: creates the invoice PDF.
+4. **Email Node** (e.g. Gmail or SMTP) sends the message with the generated PDF attached (`data` binary property).
 
 ### C. Payment webhook to Mark as Paid
 
@@ -340,7 +333,7 @@ graph LR
 ```
 
 1. **Schedule Trigger** runs daily.
-2. **Your source**: a database, spreadsheet, or CRM node that returns `clientId` and `invoiceId` for each overdue invoice.
+2. **Your source**: a database or CRM node that returns `clientId` and `invoiceId` for each overdue invoice.
 3. **InvoicingBuilder** with Resource `Client`, Operation `Send Payment Reminder`:
    - Client (ID mode): `{{ $json.clientId }}`
    - Invoice (ID mode): `{{ $json.invoiceId }}`
@@ -357,7 +350,7 @@ Record which reminders you sent, so a rerun does not email the same client twice
 | `429` rate limit             | Lower request frequency or batch size. The node reads the server's `retryAfter` value when provided. Be careful with automatic retries on operations that send email. |
 | Node missing after install   | Check the install succeeded, check n8n logs, confirm the package is in the environment that runs n8n, and restart n8n.                                                |
 | Fewer invoices than expected | The two-invoice cap. See [Limits](#limits).                                                                                                                           |
-| Email not sent               | Recipient address, the **Send to Client** / **Send to User** option, and your InvoicingBuilder email and template settings.                                           |     |
+| Email not sent               | Recipient address, the **Send to Client** / **Send to User** option, and your InvoicingBuilder email and template settings.                                           |
 
 With **Continue On Fail** enabled, a failed item returns an error object and the workflow continues. A successful execution does not prove every item succeeded, so inspect the output.
 

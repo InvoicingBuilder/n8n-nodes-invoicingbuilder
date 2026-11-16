@@ -1,12 +1,52 @@
 import type { IDataObject } from 'n8n-workflow';
-import type { BuiltInvoiceItem, TemplateFieldItem } from './buildInvoiceFields';
+
+export interface TemplateFieldItem {
+	id: string;
+	type: string;
+	label?: string;
+	value?: unknown;
+}
+
+export interface BuiltInvoiceItem {
+	templateId: string;
+	format: 'pdf' | 'png';
+	externalId?: string;
+	clientId?: string;
+	clientEmail?: string;
+	clientName?: string;
+	fields: Record<string, unknown>;
+}
 
 export interface DirectLineItemInput {
-	description: string;
+	description?: string;
+	Description?: string;
+	item?: string;
+	Item?: string;
+	name?: string;
+	Name?: string;
+	title?: string;
+	Title?: string;
 	quantity?: number | string;
+	Quantity?: number | string;
+	qty?: number | string;
+	Qty?: number | string;
+	count?: number | string;
+	Count?: number | string;
 	rate?: number | string;
+	Rate?: number | string;
+	price?: number | string;
+	Price?: number | string;
+	unitPrice?: number | string;
+	UnitPrice?: number | string;
+	cost?: number | string;
+	Cost?: number | string;
 	tax?: string | number;
+	Tax?: string | number;
 	amount?: string | number;
+	Amount?: string | number;
+	total?: string | number;
+	Total?: string | number;
+	[key: string]: unknown;
 }
 
 export interface DirectAdditionalFields {
@@ -43,7 +83,7 @@ export interface BuildDirectInvoiceOptions {
 }
 
 /**
- * Builds an invoice payload directly from workflow parameters without spreadsheet dependence.
+ * Builds an invoice payload directly from workflow parameters and data.
  * Clears unused template defaults and properly formats line items.
  */
 export function buildDirectInvoice(options: BuildDirectInvoiceOptions): BuiltInvoiceItem {
@@ -79,13 +119,44 @@ export function buildDirectInvoice(options: BuildDirectInvoiceOptions): BuiltInv
 		}
 	}
 
-	// 2. Format and populate line items
+	// 2. Format and populate line items with flexible key alias support
 	const formattedLineItems = lineItems.map((item, idx) => {
-		const qty = parseFloat(String(item.quantity ?? '1')) || 1;
-		const rate = parseFloat(String(item.rate ?? '0.00')) || 0;
+		const rawDesc =
+			item.description ??
+			item.Description ??
+			item.item ??
+			item.Item ??
+			item.name ??
+			item.Name ??
+			item.title ??
+			item.Title ??
+			'';
+		const rawQty =
+			item.quantity ??
+			item.Quantity ??
+			item.qty ??
+			item.Qty ??
+			item.count ??
+			item.Count ??
+			'1';
+		const rawRate =
+			item.rate ??
+			item.Rate ??
+			item.price ??
+			item.Price ??
+			item.unitPrice ??
+			item.UnitPrice ??
+			item.cost ??
+			item.Cost ??
+			'0.00';
+		const rawTax = item.tax ?? item.Tax;
+		const rawAmount = item.amount ?? item.Amount ?? item.total ?? item.Total;
+
+		const qty = parseFloat(String(rawQty)) || 1;
+		const rate = parseFloat(String(rawRate)) || 0;
 		const cleanTaxStr =
-			item.tax !== undefined && item.tax !== null
-				? String(item.tax).replace(/%/g, '').trim()
+			rawTax !== undefined && rawTax !== null
+				? String(rawTax).replace(/%/g, '').trim()
 				: '';
 		const taxNum = cleanTaxStr ? parseFloat(cleanTaxStr) || 0 : 0;
 		const subtotal = qty * rate;
@@ -94,13 +165,13 @@ export function buildDirectInvoice(options: BuildDirectInvoiceOptions): BuiltInv
 
 		return {
 			id: `item-${idx + 1}-${Date.now()}`,
-			description: item.description || '',
-			quantity: String(item.quantity ?? '1'),
-			rate: String(item.rate ?? '0.00'),
+			description: String(rawDesc),
+			quantity: String(rawQty),
+			rate: String(rawRate),
 			tax: cleanTaxStr,
 			amount:
-				item.amount !== undefined && String(item.amount).trim() !== ''
-					? String(item.amount)
+				rawAmount !== undefined && String(rawAmount).trim() !== ''
+					? String(rawAmount)
 					: calcAmount.toFixed(2),
 		};
 	});

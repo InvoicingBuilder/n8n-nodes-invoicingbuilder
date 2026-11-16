@@ -15,7 +15,7 @@ export const invoiceOperations: INodeProperties[] = [
 			{
 				name: 'Create',
 				value: 'create',
-				description: 'Create an invoice (PDF or PNG) from a Google Sheet or direct data',
+				description: 'Create an invoice (PDF or PNG)',
 				action: 'Create an invoice',
 			},
 			{
@@ -94,72 +94,7 @@ export const invoiceFields: INodeProperties[] = [
 			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 	},
 	// ----------------------------------
-	// Data Source Selection
-	// ----------------------------------
-	{
-		displayName: 'Data Source',
-		name: 'source',
-		type: 'options',
-		options: [
-			{
-				name: 'Google Sheet',
-				value: 'googleSheets',
-				description: 'Load invoice data from a Google Spreadsheet',
-			},
-			{
-				name: 'Direct Input / Workflow Data',
-				value: 'direct',
-				description: 'Specify invoice fields directly or map from incoming workflow items',
-			},
-		],
-		default: 'googleSheets',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-			},
-		},
-		description: 'Where to load invoice data from',
-	},
-
-	// ----------------------------------
-	// Google Sheets Connection & Data Retrieval
-	// ----------------------------------
-	{
-		displayName: 'Google Spreadsheet',
-		name: 'spreadsheet',
-		type: 'string',
-		required: true,
-		default: '',
-		placeholder: 'https://docs.google.com/spreadsheets/d/... or Spreadsheet ID',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-				source: ['googleSheets'],
-			},
-		},
-		description: 'Enter the Google Spreadsheet URL or Spreadsheet ID',
-	},
-	{
-		displayName: 'Worksheet / Sheet Name',
-		name: 'worksheet',
-		type: 'string',
-		required: true,
-		default: 'Sheet1',
-		placeholder: 'Sheet1',
-		displayOptions: {
-			show: {
-				resource: ['invoice'],
-				operation: ['create'],
-				source: ['googleSheets'],
-			},
-		},
-		description: 'The name or ID of the worksheet/tab in the Google Spreadsheet',
-	},
-
-	// ----------------------------------
-	// Direct Input Fields
+	// Invoice Creation Fields
 	// ----------------------------------
 	{
 		displayName: 'Client Name or ID',
@@ -198,7 +133,6 @@ export const invoiceFields: INodeProperties[] = [
 			show: {
 				resource: ['invoice'],
 				operation: ['create'],
-				source: ['direct'],
 			},
 		},
 		description:
@@ -217,7 +151,6 @@ export const invoiceFields: INodeProperties[] = [
 			show: {
 				resource: ['invoice'],
 				operation: ['create'],
-				source: ['direct'],
 			},
 		},
 		options: [
@@ -279,7 +212,6 @@ export const invoiceFields: INodeProperties[] = [
 			show: {
 				resource: ['invoice'],
 				operation: ['create'],
-				source: ['direct'],
 			},
 		},
 		options: [

@@ -22,17 +22,12 @@ import { searchInvoices } from './methods/searchInvoices';
 import { searchClientInvoices } from './methods/searchClientInvoices';
 import { extractResourceLocatorValue } from './helpers/resourceLocator';
 import { apiRequest } from './helpers/request';
-import { groupRows } from './helpers/groupRows';
-import {
-	buildInvoiceFields,
-	type TemplateFieldItem,
-} from './helpers/buildInvoiceFields';
 import {
 	buildDirectInvoice,
 	type DirectLineItemInput,
 	type DirectAdditionalFields,
+	type TemplateFieldItem,
 } from './helpers/directInvoice';
-import { fetchGoogleSheetData } from './helpers/googleSheets';
 import { formatApiError } from './helpers/errors';
 
 interface TemplateFieldsResponse {
@@ -655,7 +650,6 @@ export class InvoicingBuilder implements INodeType {
 				}
 
 				if (operation === 'create') {
-					const source = this.getNodeParameter('source', 0, 'googleSheets') as string;
 					const templateId = extractResourceLocatorValue(this.getNodeParameter('templateId', 0));
 					const format = this.getNodeParameter('format', 0, 'pdf') as string;
 
@@ -696,169 +690,162 @@ export class InvoicingBuilder implements INodeType {
 					);
 					const tableFieldId = tableField?.id;
 
-					let invoicesPayload: unknown[] = [];
-					let spreadsheetId: string | undefined;
-					let resolvedWorksheet: string | undefined;
+					const numItems = items.length > 0 ? items.length : 1;
+					const countToProcess = Math.min(numItems, 2);
+					const builtInvoices = [];
 
-					if (source === 'googleSheets') {
-						const spreadsheet = this.getNodeParameter('spreadsheet', 0) as string;
-						const worksheet = this.getNodeParameter('worksheet', 0, 'Sheet1') as string;
+					for (let i = 0; i < countToProcess; i++) {
+						const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i, ''));
+						const additionalFields = this.getNodeParameter(
+							'additionalFields',
+							i,
+							{},
+						) as DirectAdditionalFields;
 
-						// 1. Retrieve Data from Google Sheets
-						const sheetData = await fetchGoogleSheetData.call(this, {
-							spreadsheet,
-							worksheet,
-							googleAuthType: 'public',
-							googleApiKey: '',
-						});
+						let fallbackInvoiceNumber = '';
+						let fallbackPoNumber = '';
+						let fallbackIssueDate = '';
+						let fallbackDueDate = '';
+						try {
+							fallbackInvoiceNumber = this.getNodeParameter('invoiceNumber', i, '') as string;
+						} catch {
+							// Ignore if not present
+						}
+						try {
+							fallbackPoNumber = this.getNodeParameter('poNumber', i, '') as string;
+						} catch {
+							// Ignore if not present
+						}
+						try {
+							fallbackIssueDate = this.getNodeParameter('issueDate', i, '') as string;
+						} catch {
+							// Ignore if not present
+						}
+						try {
+							fallbackDueDate = this.getNodeParameter('dueDate', i, '') as string;
+						} catch {
+							// Ignore if not present
+						}
 
-						spreadsheetId = sheetData.spreadsheetId;
-						resolvedWorksheet = sheetData.worksheet;
+						const invoiceNumber = (additionalFields.invoiceNumber as string) || fallbackInvoiceNumber;
+						const poNumber = (additionalFields.poNumber as string) || fallbackPoNumber;
+						const issueDate = (additionalFields.issueDate as string) || fallbackIssueDate;
+						const dueDate = (additionalFields.dueDate as string) || fallbackDueDate;
 
-						// 2. Group rows
-						const groups = groupRows(sheetData.rows);
-
-						if (groups.length === 0) {
+						if (!clientId) {
 							throw new NodeOperationError(
 								this.getNode(),
-								'No rows to turn into invoices',
+								'Client Name or ID is required for invoice creation. Please select a client.',
+								{ itemIndex: i },
 							);
 						}
 
-						// If more than 2 invoices found in invoice data, use first 2 and ignore others
-						const groupsToProcess = groups.slice(0, 2);
+						let clientData:
+							| { name?: string; email?: string; billTo?: string; shipTo?: string }
+							| undefined;
 
-						// 3. Build invoices with template clearing and spreadsheet population
-						invoicesPayload = groupsToProcess.map((g) =>
-							buildInvoiceFields({
-								rowGroup: g,
-								templateId,
-								format: format as 'pdf' | 'png',
-								tableFieldId,
-								templateFields,
-							}),
-						);
-					} else {
-						// source === 'direct'
-						const numItems = items.length > 0 ? items.length : 1;
-						const countToProcess = Math.min(numItems, 2);
-						const builtInvoices = [];
-
-						for (let i = 0; i < countToProcess; i++) {
-							const clientId = extractResourceLocatorValue(this.getNodeParameter('clientId', i, ''));
-							const additionalFields = this.getNodeParameter(
-								'additionalFields',
-								i,
-								{},
-							) as DirectAdditionalFields;
-
-							let fallbackInvoiceNumber = '';
-							let fallbackPoNumber = '';
-							let fallbackIssueDate = '';
-							let fallbackDueDate = '';
-							try {
-								fallbackInvoiceNumber = this.getNodeParameter('invoiceNumber', i, '') as string;
-							} catch {
-								// Ignore if not present
-							}
-							try {
-								fallbackPoNumber = this.getNodeParameter('poNumber', i, '') as string;
-							} catch {
-								// Ignore if not present
-							}
-							try {
-								fallbackIssueDate = this.getNodeParameter('issueDate', i, '') as string;
-							} catch {
-								// Ignore if not present
-							}
-							try {
-								fallbackDueDate = this.getNodeParameter('dueDate', i, '') as string;
-							} catch {
-								// Ignore if not present
-							}
-
-							const invoiceNumber = (additionalFields.invoiceNumber as string) || fallbackInvoiceNumber;
-							const poNumber = (additionalFields.poNumber as string) || fallbackPoNumber;
-							const issueDate = (additionalFields.issueDate as string) || fallbackIssueDate;
-							const dueDate = (additionalFields.dueDate as string) || fallbackDueDate;
-
-							if (!clientId) {
-								throw new NodeOperationError(
-									this.getNode(),
-									'Client Name or ID is required for direct invoice creation. Please select a client.',
-									{ itemIndex: i },
-								);
-							}
-
-							let clientData:
-								| { name?: string; email?: string; billTo?: string; shipTo?: string }
-								| undefined;
-
-							try {
-								clientData = (await apiRequest.call(
-									this,
-									'GET',
-									`/api/v1/clients/${clientId}`,
-								)) as { name?: string; email?: string; billTo?: string; shipTo?: string };
-							} catch {
-								throw new NodeOperationError(
-									this.getNode(),
-									`Failed to retrieve details for selected client "${clientId}".`,
-									{ itemIndex: i },
-								);
-							}
-
-							const lineItemsParam = this.getNodeParameter('lineItems', i, {}) as {
-								item?: DirectLineItemInput[];
-							};
-
-							// Resolve line items: from parameter, or fallback to json.lineItems / json.items
-							let lineItems = lineItemsParam?.item || [];
-							if (lineItems.length === 0 && items[i]?.json) {
-								const fallbackItems =
-									(items[i].json.lineItems as DirectLineItemInput[]) ||
-									(items[i].json.items as DirectLineItemInput[]);
-								if (Array.isArray(fallbackItems)) {
-									lineItems = fallbackItems;
-								}
-							}
-
-							const resolvedClientName = clientData?.name || undefined;
-							const resolvedClientEmail = clientData?.email || undefined;
-							const resolvedBillTo = clientData?.billTo || undefined;
-							const resolvedShipTo = clientData?.shipTo || undefined;
-
-							const invoiceItem = buildDirectInvoice({
-								templateId,
-								format: format as 'pdf' | 'png',
-								invoiceNumber:
-									invoiceNumber ||
-									(items[i]?.json?.invoiceNumber as string) ||
-									(items[i]?.json?.['Invoice Number'] as string) ||
-									undefined,
-								poNumber:
-									poNumber ||
-									(items[i]?.json?.poNumber as string) ||
-									(items[i]?.json?.['PO Number'] as string) ||
-									undefined,
-								clientId: clientId || undefined,
-								clientName: resolvedClientName,
-								clientEmail: resolvedClientEmail,
-								billTo: resolvedBillTo,
-								shipTo: resolvedShipTo,
-								issueDate,
-								dueDate,
-								lineItems,
-								additionalFields,
-								templateFields,
-								tableFieldId,
-							});
-
-							builtInvoices.push(invoiceItem);
+						try {
+							clientData = (await apiRequest.call(
+								this,
+								'GET',
+								`/api/v1/clients/${clientId}`,
+							)) as { name?: string; email?: string; billTo?: string; shipTo?: string };
+						} catch {
+							throw new NodeOperationError(
+								this.getNode(),
+								`Failed to retrieve details for selected client "${clientId}".`,
+								{ itemIndex: i },
+							);
 						}
 
-						invoicesPayload = builtInvoices;
+						const lineItemsParam = this.getNodeParameter('lineItems', i, {}) as
+							| {
+									item?: DirectLineItemInput[];
+									items?: DirectLineItemInput[];
+									lineItems?: DirectLineItemInput[];
+									data?: DirectLineItemInput[];
+									rows?: DirectLineItemInput[];
+							  }
+							| DirectLineItemInput[]
+							| string;
+
+						// Resolve line items: from parameter (array, fixedCollection, JSON string), or fallback to json.lineItems / json.items / json.data / json.rows
+						let lineItems: DirectLineItemInput[] = [];
+						if (Array.isArray(lineItemsParam)) {
+							lineItems = lineItemsParam;
+						} else if (
+							typeof lineItemsParam === 'string' &&
+							lineItemsParam.trim().startsWith('[')
+						) {
+							try {
+								const parsed = JSON.parse(lineItemsParam);
+								if (Array.isArray(parsed)) {
+									lineItems = parsed;
+								}
+							} catch {
+								// Ignore invalid JSON string
+							}
+						} else if (lineItemsParam && typeof lineItemsParam === 'object') {
+							if (Array.isArray(lineItemsParam.item)) {
+								lineItems = lineItemsParam.item;
+							} else if (Array.isArray(lineItemsParam.items)) {
+								lineItems = lineItemsParam.items;
+							} else if (Array.isArray(lineItemsParam.lineItems)) {
+								lineItems = lineItemsParam.lineItems;
+							} else if (Array.isArray(lineItemsParam.data)) {
+								lineItems = lineItemsParam.data;
+							} else if (Array.isArray(lineItemsParam.rows)) {
+								lineItems = lineItemsParam.rows;
+							}
+						}
+
+						if (lineItems.length === 0 && items[i]?.json) {
+							const json = items[i].json;
+							const fallbackItems =
+								(json.lineItems as DirectLineItemInput[]) ||
+								(json.items as DirectLineItemInput[]) ||
+								(json.data as DirectLineItemInput[]) ||
+								(json.rows as DirectLineItemInput[]);
+							if (Array.isArray(fallbackItems)) {
+								lineItems = fallbackItems;
+							}
+						}
+
+						const resolvedClientName = clientData?.name || undefined;
+						const resolvedClientEmail = clientData?.email || undefined;
+						const resolvedBillTo = clientData?.billTo || undefined;
+						const resolvedShipTo = clientData?.shipTo || undefined;
+
+						const invoiceItem = buildDirectInvoice({
+							templateId,
+							format: format as 'pdf' | 'png',
+							invoiceNumber:
+								invoiceNumber ||
+								(items[i]?.json?.invoiceNumber as string) ||
+								(items[i]?.json?.['Invoice Number'] as string) ||
+								undefined,
+							poNumber:
+								poNumber ||
+								(items[i]?.json?.poNumber as string) ||
+								(items[i]?.json?.['PO Number'] as string) ||
+								undefined,
+							clientId: clientId || undefined,
+							clientName: resolvedClientName,
+							clientEmail: resolvedClientEmail,
+							billTo: resolvedBillTo,
+							shipTo: resolvedShipTo,
+							issueDate,
+							dueDate,
+							lineItems,
+							additionalFields,
+							templateFields,
+							tableFieldId,
+						});
+
+						builtInvoices.push(invoiceItem);
 					}
+
+					const invoicesPayload = builtInvoices;
 
 					const requestBody = {
 						invoices: invoicesPayload,
@@ -888,9 +875,9 @@ export class InvoicingBuilder implements INodeType {
 					const idsHeader = response.headers?.['x-invoice-ids'];
 					const invoiceIds = idsHeader
 						? idsHeader
-							.split(',')
-							.map((id: string) => id.trim())
-							.filter(Boolean)
+								.split(',')
+								.map((id: string) => id.trim())
+								.filter(Boolean)
 						: undefined;
 
 					const fileName = invoiceCount === 1 ? `invoice.${format}` : 'invoices.zip';
@@ -916,15 +903,7 @@ export class InvoicingBuilder implements INodeType {
 						invoiceCount,
 						format,
 						fileName,
-						source,
 					};
-
-					if (spreadsheetId) {
-						jsonOutput.spreadsheetId = spreadsheetId;
-					}
-					if (resolvedWorksheet) {
-						jsonOutput.worksheet = resolvedWorksheet;
-					}
 
 					if (invoiceIds && invoiceIds.length > 0) {
 						jsonOutput.invoiceIds = invoiceIds;

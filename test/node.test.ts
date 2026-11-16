@@ -19,7 +19,6 @@ interface MockContextOptions {
 	credentials?: IDataObject;
 	continueOnFail?: boolean;
 	httpHandler?: (options: IHttpRequestOptions) => Promise<unknown>;
-	sheetCsvData?: string;
 }
 
 interface HttpErrorPayload extends Error {
@@ -30,18 +29,13 @@ interface HttpErrorPayload extends Error {
 	};
 }
 
-const DEFAULT_SHEET_CSV = `"orderId","item","quantity","rate","Customer Name","Customer Email"
-"1","Monitor","1","200","XYZ Company","xyz@example.com"
-`;
-
 function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFunctions {
 	const items = options.items || [{ json: {} }];
 	const params: IDataObject = {
 		resource: 'invoice',
 		operation: 'create',
-		spreadsheet: 'https://docs.google.com/spreadsheets/d/test_sheet_123/edit#gid=0',
-		worksheet: 'Sheet1',
 		templateId: 'tmpl_123',
+		clientId: 'client_123',
 		format: 'pdf',
 		sendToClient: false,
 		...options.parameters,
@@ -61,8 +55,6 @@ function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFun
 		position: [0, 0],
 		parameters: {},
 	};
-
-	const csvData = options.sheetCsvData !== undefined ? options.sheetCsvData : DEFAULT_SHEET_CSV;
 
 	const context = {
 		getInputData: vi.fn(() => items),
@@ -87,15 +79,14 @@ function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFun
 				if (options.httpHandler) {
 					return await options.httpHandler(reqOpts);
 				}
-				// Default Google Sheets export response
-				return csvData;
+				return {};
 			}),
 			httpRequestWithAuthentication: vi.fn(
 				async function (this: unknown, _credName: string, reqOpts: IHttpRequestOptions) {
 					if (options.httpHandler) {
 						return await options.httpHandler(reqOpts);
 					}
-					// Default template fields response (includes default template values to test clearing)
+					// Default template fields response
 					if (reqOpts.url?.includes('/api/v1/templates/fields')) {
 						return {
 							id: 'tmpl_123',
@@ -105,6 +96,16 @@ function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFun
 								{ id: 'comp_notes', type: 'notes', value: 'Old template notes' },
 								{ id: 'tbl_id', type: 'table', value: [{ description: 'Laptop' }, { description: 'Keyboard' }] },
 							],
+						};
+					}
+					// Default client response
+					if (reqOpts.url?.includes('/api/v1/clients/')) {
+						return {
+							id: 'client_123',
+							name: 'Default Client Inc',
+							email: 'client@example.com',
+							billTo: '123 Default St',
+							shipTo: '123 Default Ship',
 						};
 					}
 					// Default create response
@@ -147,35 +148,49 @@ function createMockExecuteContext(options: MockContextOptions = {}): IExecuteFun
 	return context as unknown as IExecuteFunctions;
 }
 
-describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
+describe('InvoicingBuilder Invoice Creation with Workflow Data', () => {
 	const node = new InvoicingBuilder();
 
-	it('retrieves spreadsheet, clears template defaults, populates spreadsheet values, and creates invoice', async () => {
+	it('creates invoice from direct parameters with multiple line items', async () => {
 		let capturedCreateBody: {
 			invoices: Array<{
 				fields: {
 					comp_billto: string;
-					comp_email: string;
 					comp_notes: string;
-					tbl_id: Array<{ description: string; rate: string }>;
+					tbl_id: Array<{ description: string; quantity: string; rate: string; amount: string }>;
 				};
 			}>;
 		} | null = null;
 
 		const context = createMockExecuteContext({
-			sheetCsvData: `"Customer Name","Customer Email","Item","Quantity","Rate"
-"XYZ Company","xyz@example.com","Monitor",1,200
-`,
+			parameters: {
+				lineItems: {
+					item: [
+						{ description: 'Consulting', quantity: 5, rate: 100 },
+						{ description: 'Design', quantity: 2, rate: 250 },
+					],
+				},
+				additionalFields: {
+					notes: 'Thank you for your business',
+				},
+			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
 					return {
 						id: 'tmpl_123',
 						fields: [
 							{ id: 'comp_billto', type: 'billTo', value: 'ABC Company' },
-							{ id: 'comp_email', type: 'textarea', value: 'abc@example.com' },
 							{ id: 'comp_notes', type: 'notes', value: 'Old template notes' },
-							{ id: 'tbl_id', type: 'table', value: [{ description: 'Laptop' }, { description: 'Keyboard' }] },
+							{ id: 'tbl_id', type: 'table', value: [{ description: 'Laptop' }] },
 						],
+					};
+				}
+				if (opts.url?.includes('/api/v1/clients/')) {
+					return {
+						id: 'client_123',
+						name: 'Default Client Inc',
+						email: 'billing@default.com',
+						billTo: '123 Default St',
 					};
 				}
 				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
@@ -189,8 +204,7 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 						body: Buffer.from('%PDF-1.4 test pdf'),
 					};
 				}
-				// Gviz CSV export
-				return `"Customer Name","Customer Email","Item","Quantity","Rate"\n"XYZ Company","xyz@example.com","Monitor",1,200\n`;
+				return {};
 			},
 		});
 
@@ -200,97 +214,24 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 		expect(result[0][0].json.success).toBe(true);
 		expect(result[0][0].json.invoiceCount).toBe(1);
 		expect(result[0][0].json.fileName).toBe('invoice.pdf');
-		expect(result[0][0].json.spreadsheetId).toBe('test_sheet_123');
-		expect(result[0][0].json.worksheet).toBe('Sheet1');
 		expect(result[0][0].binary?.data).toBeDefined();
 
-		// Verify Requirement 3: Template Clearing & Spreadsheet Mapping
 		expect(capturedCreateBody).not.toBeNull();
 		const invoice = capturedCreateBody!.invoices[0];
-		expect(invoice.fields.comp_billto).toBe('XYZ Company');
-		expect(invoice.fields.comp_email).toBe('xyz@example.com');
-		// comp_notes was not in spreadsheet, so it is cleared to '' rather than retaining 'Old template notes'
-		expect(invoice.fields.comp_notes).toBe('');
-		// Line items completely replaced by Monitor; Laptop and Keyboard are gone
-		expect(invoice.fields.tbl_id).toHaveLength(1);
-		expect(invoice.fields.tbl_id[0].description).toBe('Monitor');
-		expect(invoice.fields.tbl_id[0].rate).toBe('200');
-	});
+		expect(invoice.fields.comp_billto).toBe('123 Default St');
+		expect(invoice.fields.comp_notes).toBe('Thank you for your business');
 
-	it('populates template automatically when user provides only spreadsheet and templateId (no manual mappings)', async () => {
-		let capturedCreateBody: {
-			invoices: Array<{
-				fields: {
-					comp_billto?: string;
-					tbl_id?: Array<{ description: string; quantity: string; rate: string; amount: string }>;
-				};
-			}>;
-		} | null = null;
-
-		const context = createMockExecuteContext({
-			sheetCsvData: `"Description","Qty.","Rate","Amount","Bill To","Date"
-"Web Design",2,1500,3000,"Acme Corp","2026-10-27"
-"Hosting",1,200,200,"Acme Corp","2026-10-27"
-`,
-			httpHandler: async (opts) => {
-				if (opts.url?.includes('/api/v1/templates/fields')) {
-					return {
-						id: 'tmpl_123',
-						fields: [
-							{ id: 'comp_billto', type: 'billTo', label: 'Bill To', value: 'Default Company' },
-							{ id: 'comp_notes', type: 'notes', label: 'Notes', value: 'Default Notes' },
-							{ id: 'tbl_id', type: 'table', label: 'Table', value: [{ description: 'Old Item' }] },
-						],
-					};
-				}
-				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					capturedCreateBody = opts.body as typeof capturedCreateBody;
-					return {
-						statusCode: 200,
-						headers: {
-							'x-invoice-count': '1',
-							'x-invoice-ids': 'inv_created_1',
-						},
-						body: Buffer.from('%PDF-1.4 test pdf'),
-					};
-				}
-				return `"Description","Qty.","Rate","Amount","Bill To","Date"\n"Web Design",2,1500,3000,"Acme Corp","2026-10-27"\n"Hosting",1,200,200,"Acme Corp","2026-10-27"\n`;
-			},
-		});
-
-		const result = await node.execute.call(context);
-		expect(result[0][0].json.success).toBe(true);
-		expect(result[0][0].json.invoiceCount).toBe(1);
-
-		// Verify automatic population occurred
-		expect(capturedCreateBody).not.toBeNull();
-		const inv = capturedCreateBody!.invoices[0];
-		expect(inv.fields.comp_billto).toBe('Acme Corp');
-		// Notes was omitted from spreadsheet, so cleared
-		expect((inv.fields as Record<string, unknown>).comp_notes).toBe('');
-
-		// Line items auto-mapped
-		const table = inv.fields.tbl_id!;
+		const table = invoice.fields.tbl_id;
 		expect(table).toHaveLength(2);
-		expect(table[0].description).toBe('Web Design');
-		expect(table[0].quantity).toBe('2');
-		expect(table[0].rate).toBe('1500');
-		expect(table[0].amount).toBe('3000');
-		expect(table[1].description).toBe('Hosting');
-		expect(table[1].quantity).toBe('1');
-		expect(table[1].rate).toBe('200');
-		expect(table[1].amount).toBe('200');
-	});
+		expect(table[0].description).toBe('Consulting');
+		expect(table[0].quantity).toBe('5');
+		expect(table[0].rate).toBe('100');
+		expect(table[0].amount).toBe('500.00');
 
-	it('throws error when spreadsheet contains no data rows', async () => {
-		const context = createMockExecuteContext({
-			sheetCsvData: `"Customer Name","Customer Email","Item"\n`, // headers only, 0 data rows
-		});
-
-		await expect(node.execute.call(context)).rejects.toThrow(NodeOperationError);
-		await expect(node.execute.call(context)).rejects.toThrow(
-			'The worksheet "Sheet1" contains column headers but no data rows.',
-		);
+		expect(table[1].description).toBe('Design');
+		expect(table[1].quantity).toBe('2');
+		expect(table[1].rate).toBe('250');
+		expect(table[1].amount).toBe('500.00');
 	});
 
 	it('only exposes allowed create invoice properties in description', () => {
@@ -301,9 +242,6 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 		const fieldNames = createFields.map((f) => f.name);
 		expect(fieldNames).toEqual([
 			'templateId',
-			'source',
-			'spreadsheet',
-			'worksheet',
 			'clientId',
 			'lineItems',
 			'additionalFields',
@@ -312,6 +250,9 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 		]);
 
 		const unwanted = [
+			'source',
+			'spreadsheet',
+			'worksheet',
 			'invoiceNumber',
 			'poNumber',
 			'issueDate',
@@ -335,28 +276,182 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 		}
 	});
 
-	it('supports sendToClient toggle: passes flag to backend and extracts clientEmail and clientName from spreadsheet', async () => {
+	it('supports line items passed as an array directly (e.g. output of Aggregate node)', async () => {
 		let capturedCreateBody: {
 			invoices: Array<{
-				clientEmail?: string;
-				clientName?: string;
+				fields: {
+					tbl_id: Array<{ description: string; quantity: string; rate: string; amount: string }>;
+				};
+			}>;
+		} | null = null;
+
+		const context = createMockExecuteContext({
+			parameters: {
+				lineItems: [
+					{ description: 'Service A', quantity: 3, rate: 80 },
+					{ description: 'Service B', quantity: 1, rate: 120 },
+				],
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return {
+						id: 'tmpl_123',
+						fields: [{ id: 'tbl_id', type: 'table', value: [] }],
+					};
+				}
+				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
+					return {
+						statusCode: 200,
+						headers: { 'x-invoice-count': '1' },
+						body: Buffer.from('%PDF-1.4 test pdf'),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0][0].json.success).toBe(true);
+		expect(capturedCreateBody).not.toBeNull();
+		const table = capturedCreateBody!.invoices[0].fields.tbl_id;
+		expect(table).toHaveLength(2);
+		expect(table[0].description).toBe('Service A');
+		expect(table[0].amount).toBe('240.00');
+		expect(table[1].description).toBe('Service B');
+		expect(table[1].amount).toBe('120.00');
+	});
+
+	it('supports line items from incoming workflow item json with column aliases', async () => {
+		let capturedCreateBody: {
+			invoices: Array<{
+				fields: {
+					tbl_id: Array<{ description: string; quantity: string; rate: string; amount: string }>;
+				};
+			}>;
+		} | null = null;
+
+		const context = createMockExecuteContext({
+			items: [
+				{
+					json: {
+						lineItems: [
+							{ Item: 'Product X', Qty: 2, Price: 50, Tax: '10%' },
+							{ Description: 'Product Y', Quantity: 1, Rate: 100 },
+						],
+					},
+				},
+			],
+			parameters: {
+				lineItems: {},
+			},
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return {
+						id: 'tmpl_123',
+						fields: [{ id: 'tbl_id', type: 'table', value: [] }],
+					};
+				}
+				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
+					return {
+						statusCode: 200,
+						headers: { 'x-invoice-count': '1' },
+						body: Buffer.from('%PDF-1.4 test pdf'),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result[0][0].json.success).toBe(true);
+		expect(capturedCreateBody).not.toBeNull();
+		const table = capturedCreateBody!.invoices[0].fields.tbl_id;
+		expect(table).toHaveLength(2);
+		expect(table[0].description).toBe('Product X');
+		expect(table[0].quantity).toBe('2');
+		expect(table[0].rate).toBe('50');
+		expect(table[0].amount).toBe('110.00'); // 100 + 10%
+		expect(table[1].description).toBe('Product Y');
+		expect(table[1].quantity).toBe('1');
+		expect(table[1].rate).toBe('100');
+		expect(table[1].amount).toBe('100.00');
+	});
+
+	it('creates 2 invoices in a zip archive when multiple workflow items are provided', async () => {
+		let capturedCreateBody: {
+			invoices: Array<{
+				clientId?: string;
 				fields: { tbl_id: unknown[] };
 			}>;
+		} | null = null;
+
+		const context = createMockExecuteContext({
+			items: [
+				{ json: { lineItems: [{ description: 'Inv 1 item', quantity: 1, rate: 100 }] } },
+				{ json: { lineItems: [{ description: 'Inv 2 item', quantity: 2, rate: 200 }] } },
+			],
+			itemParameters: [
+				{ clientId: 'client_1' },
+				{ clientId: 'client_2' },
+			],
+			httpHandler: async (opts) => {
+				if (opts.url?.includes('/api/v1/templates/fields')) {
+					return {
+						id: 'tmpl_123',
+						fields: [{ id: 'tbl_id', type: 'table', value: [] }],
+					};
+				}
+				if (opts.url?.includes('/api/v1/clients/')) {
+					return { id: 'client_x', name: 'Client X', billTo: 'Address' };
+				}
+				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
+					capturedCreateBody = opts.body as typeof capturedCreateBody;
+					return {
+						statusCode: 200,
+						headers: {
+							'x-invoice-count': '2',
+							'x-invoice-ids': 'inv_1, inv_2',
+						},
+						body: Buffer.from('ZIP-binary-content'),
+					};
+				}
+				return {};
+			},
+		});
+
+		const result = await node.execute.call(context);
+		expect(result).toHaveLength(1);
+		expect(result[0]).toHaveLength(1);
+		expect(result[0][0].json.invoiceCount).toBe(2);
+		expect(result[0][0].json.fileName).toBe('invoices.zip');
+		expect(result[0][0].json.invoiceIds).toEqual(['inv_1', 'inv_2']);
+
+		expect(capturedCreateBody).not.toBeNull();
+		expect(capturedCreateBody!.invoices).toHaveLength(2);
+		expect(capturedCreateBody!.invoices[0].clientId).toBe('client_1');
+		expect(capturedCreateBody!.invoices[1].clientId).toBe('client_2');
+	});
+
+	it('supports sendToClient toggle: passes flag to backend and returns emailed recipient', async () => {
+		let capturedCreateBody: {
 			sendToClient?: boolean;
 		} | null = null;
 
 		const context = createMockExecuteContext({
-			sheetCsvData: `"Client Name","Client Email","Item","Quantity","Rate"
-"Acme Inc","billing@acme.com","Consulting",5,100
-`,
 			parameters: {
 				options: {
 					sendToClient: true,
 				},
+				lineItems: [{ description: 'Item 1', quantity: 1, rate: 100 }],
 			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
-					return { fields: [{ id: 'tbl_id', type: 'table' }] };
+					return { id: 'tmpl_123', fields: [{ id: 'tbl_id', type: 'table', value: [] }] };
+				}
+				if (opts.url?.includes('/api/v1/clients/')) {
+					return { id: 'client_123', name: 'Acme Inc', email: 'billing@acme.com', billTo: 'Acme HQ' };
 				}
 				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
 					capturedCreateBody = opts.body as typeof capturedCreateBody;
@@ -364,196 +459,21 @@ describe('InvoicingBuilder Google Sheets-based Create Invoice Workflow', () => {
 						statusCode: 200,
 						headers: {
 							'x-invoice-count': '1',
-							'x-invoice-ids': 'inv_email_1',
+							'x-invoice-ids': 'inv_1',
 							'x-invoices-emailed': 'billing@acme.com',
 						},
-						body: Buffer.from('%PDF-1.4 emailed invoice'),
+						body: Buffer.from('%PDF-1.4 test pdf'),
 					};
 				}
-				return `"Client Name","Client Email","Item","Quantity","Rate"\n"Acme Inc","billing@acme.com","Consulting",5,100\n`;
+				return {};
 			},
 		});
 
 		const result = await node.execute.call(context);
-		expect(result[0][0].json.success).toBe(true);
 		expect(result[0][0].json.sendToClient).toBe(true);
 		expect(result[0][0].json.emailedTo).toEqual(['billing@acme.com']);
-
 		expect(capturedCreateBody).not.toBeNull();
 		expect(capturedCreateBody!.sendToClient).toBe(true);
-		expect(capturedCreateBody!.invoices[0].clientEmail).toBe('billing@acme.com');
-		expect(capturedCreateBody!.invoices[0].clientName).toBe('Acme Inc');
-	});
-
-	it('groups rows into 2 invoices and creates zip archive', async () => {
-		const context = createMockExecuteContext({
-			sheetCsvData: `"OrderId","Customer Name","Item","Quantity","Rate"
-"INV-1","Acme Corp","Monitor",1,200
-"INV-2","Beta LLC","Laptop",1,1000
-`,
-			httpHandler: async (opts) => {
-				if (opts.url?.includes('/api/v1/templates/fields')) {
-					return { fields: [{ id: 'tbl_id', type: 'table' }] };
-				}
-				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					return {
-						statusCode: 200,
-						headers: {
-							'x-invoice-count': '2',
-							'x-invoice-ids': 'inv_1,inv_2',
-						},
-						body: Buffer.from('PK-zip-content'),
-					};
-				}
-				return `"OrderId","Customer Name","Item","Quantity","Rate"\n"INV-1","Acme Corp","Monitor",1,200\n"INV-2","Beta LLC","Laptop",1,1000\n`;
-			},
-		});
-
-		const result = await node.execute.call(context);
-		expect(result[0][0].json.success).toBe(true);
-		expect(result[0][0].json.invoiceCount).toBe(2);
-		expect(result[0][0].json.fileName).toBe('invoices.zip');
-		expect(result[0][0].json.invoiceIds).toEqual(['inv_1', 'inv_2']);
-	});
-
-	it('uses first 2 invoices and ignores others when spreadsheet yields > 2 invoice groups', async () => {
-		let capturedCreateBody: { invoices: Array<{ externalId?: string }> } | null = null;
-		const context = createMockExecuteContext({
-			sheetCsvData: `"OrderId","Item","Rate"
-"INV-1","Item 1",100
-"INV-2","Item 2",200
-"INV-3","Item 3",300
-`,
-			httpHandler: async (opts) => {
-				if (opts.url?.includes('/api/v1/templates/fields')) {
-					return { fields: [{ id: 'tbl_id', type: 'table' }] };
-				}
-				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					capturedCreateBody = opts.body as { invoices: Array<{ externalId?: string }> };
-					return {
-						statusCode: 200,
-						headers: {
-							'x-invoice-count': '2',
-							'x-invoice-ids': 'inv_1,inv_2',
-						},
-						body: Buffer.from('PK-zip-content'),
-					};
-				}
-				return `"OrderId","Item","Rate"\n"INV-1","Item 1",100\n"INV-2","Item 2",200\n"INV-3","Item 3",300\n`;
-			},
-		});
-
-		const result = await node.execute.call(context);
-		expect(result[0][0].json.success).toBe(true);
-		expect(result[0][0].json.invoiceCount).toBe(2);
-		expect(result[0][0].json.fileName).toBe('invoices.zip');
-
-		// Verify create API received only the first 2 invoices; INV-3 was ignored
-		expect(capturedCreateBody).not.toBeNull();
-		expect(capturedCreateBody!.invoices).toHaveLength(2);
-		expect(capturedCreateBody!.invoices[0].externalId).toBe('INV-1');
-		expect(capturedCreateBody!.invoices[1].externalId).toBe('INV-2');
-	});
-
-	it('calculates invoice count based on invoice data, not on row or column numbers', async () => {
-		let capturedCreateBody: { invoices: Array<{ fields: { tbl_id: unknown[] } }> } | null = null;
-		// 5 rows in spreadsheet, but no identifier column => exactly 1 invoice with 5 line items (not 5 invoices)
-		const context = createMockExecuteContext({
-			sheetCsvData: `"Item","Quantity","Rate"
-"Item A",1,10
-"Item B",2,20
-"Item C",1,30
-"Item D",3,40
-"Item E",1,50
-`,
-			httpHandler: async (opts) => {
-				if (opts.url?.includes('/api/v1/templates/fields')) {
-					return { fields: [{ id: 'tbl_id', type: 'table' }] };
-				}
-				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					capturedCreateBody = opts.body as { invoices: Array<{ fields: { tbl_id: unknown[] } }> };
-					return {
-						statusCode: 200,
-						headers: {
-							'x-invoice-count': '1',
-							'x-invoice-ids': 'inv_1',
-						},
-						body: Buffer.from('%PDF-1.4 single invoice'),
-					};
-				}
-				return `"Item","Quantity","Rate"\n"Item A",1,10\n"Item B",2,20\n"Item C",1,30\n"Item D",3,40\n"Item E",1,50\n`;
-			},
-		});
-
-		const result = await node.execute.call(context);
-		expect(result[0][0].json.success).toBe(true);
-		expect(result[0][0].json.invoiceCount).toBe(1);
-		expect(result[0][0].json.fileName).toBe('invoice.pdf');
-
-		// Verify that 5 rows did NOT produce 5 invoices, but 1 invoice containing all 5 line items
-		expect(capturedCreateBody).not.toBeNull();
-		expect(capturedCreateBody!.invoices).toHaveLength(1);
-		expect(capturedCreateBody!.invoices[0].fields.tbl_id).toHaveLength(5);
-	});
-
-	it('auto-detects invoice groups from data and keeps line items separate', async () => {
-		let capturedCreateBody: {
-			invoices: Array<{
-				externalId?: string;
-				fields: { tbl_id: Array<{ description: string }> };
-			}>;
-		} | null = null;
-
-		const context = createMockExecuteContext({
-			sheetCsvData: `"Invoice #","Customer Name","Item","Rate"
-"INV-101","Acme Corp","Monitor",200
-"INV-101","Acme Corp","Mouse",25
-"INV-102","Beta LLC","Laptop",1000
-"INV-102","Beta LLC","Keyboard",75
-`,
-			httpHandler: async (opts) => {
-				if (opts.url?.includes('/api/v1/templates/fields')) {
-					return { fields: [{ id: 'tbl_id', type: 'table' }] };
-				}
-				if (opts.url?.includes('/api/v1/n8n/invoices/create')) {
-					capturedCreateBody = opts.body as {
-						invoices: Array<{
-							externalId?: string;
-							fields: { tbl_id: Array<{ description: string }> };
-						}>;
-					};
-					return {
-						statusCode: 200,
-						headers: {
-							'x-invoice-count': '2',
-							'x-invoice-ids': 'inv_101,inv_102',
-						},
-						body: Buffer.from('PK-zip-content'),
-					};
-				}
-				return `"Invoice #","Customer Name","Item","Rate"\n"INV-101","Acme Corp","Monitor",200\n"INV-101","Acme Corp","Mouse",25\n"INV-102","Beta LLC","Laptop",1000\n"INV-102","Beta LLC","Keyboard",75\n`;
-			},
-		});
-
-		const result = await node.execute.call(context);
-		expect(result[0][0].json.success).toBe(true);
-		expect(result[0][0].json.invoiceCount).toBe(2);
-
-		// Verify that line items were NOT combined into 1 invoice
-		expect(capturedCreateBody).not.toBeNull();
-		expect(capturedCreateBody!.invoices).toHaveLength(2);
-
-		// Invoice 1 only has Monitor and Mouse
-		const inv1Items = capturedCreateBody!.invoices[0].fields.tbl_id;
-		expect(inv1Items).toHaveLength(2);
-		expect(inv1Items[0].description).toBe('Monitor');
-		expect(inv1Items[1].description).toBe('Mouse');
-
-		// Invoice 2 only has Laptop and Keyboard
-		const inv2Items = capturedCreateBody!.invoices[1].fields.tbl_id;
-		expect(inv2Items).toHaveLength(2);
-		expect(inv2Items[0].description).toBe('Laptop');
-		expect(inv2Items[1].description).toBe('Keyboard');
 	});
 });
 
@@ -568,7 +488,7 @@ describe('InvoicingBuilder Create Operation - Error Handling & Edge Cases', () =
 					error.response = { status: 401, data: { message: 'Unauthorized' } };
 					throw error;
 				}
-				return DEFAULT_SHEET_CSV;
+				return {};
 			},
 		});
 
@@ -593,7 +513,7 @@ describe('InvoicingBuilder Create Operation - Error Handling & Edge Cases', () =
 					};
 					throw error;
 				}
-				return DEFAULT_SHEET_CSV;
+				return {};
 			},
 		});
 
@@ -618,7 +538,7 @@ describe('InvoicingBuilder Create Operation - Error Handling & Edge Cases', () =
 					};
 					throw error;
 				}
-				return DEFAULT_SHEET_CSV;
+				return {};
 			},
 		});
 
@@ -641,7 +561,7 @@ describe('InvoicingBuilder Create Operation - Error Handling & Edge Cases', () =
 					error.response = { status: 401, data: { message: 'Unauthorized' } };
 					throw error;
 				}
-				return DEFAULT_SHEET_CSV;
+				return {};
 			},
 		});
 
@@ -860,7 +780,7 @@ describe('InvoicingBuilder Analyse Trends Operation (Regression Tests)', () => {
 describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
 	const node = new InvoicingBuilder();
 
-	it('creates an invoice directly from workflow parameters without spreadsheet', async () => {
+	it('creates an invoice directly from workflow parameters', async () => {
 		let capturedCreateBody: {
 			invoices: Array<{
 				templateId: string;
@@ -877,7 +797,6 @@ describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
 			parameters: {
 				resource: 'invoice',
 				operation: 'create',
-				source: 'direct',
 				templateId: 'tmpl_123',
 				clientId: 'client_direct_1',
 				format: 'pdf',
@@ -947,7 +866,6 @@ describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
 		const result = await node.execute.call(context);
 		expect(result).toHaveLength(1);
 		expect(result[0][0].json.success).toBe(true);
-		expect(result[0][0].json.source).toBe('direct');
 		expect(result[0][0].json.fileName).toBe('invoice.pdf');
 		expect(result[0][0].json.sendToClient).toBe(true);
 		expect(result[0][0].json.emailedTo).toEqual(['billing@directclient.com']);
@@ -1053,13 +971,13 @@ describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
 		expect(lineItems[1].description).toBe('SEO Work');
 	});
 
-	it('throws error when clientId is missing for direct invoice creation', async () => {
+	it('throws error when clientId is missing for invoice creation', async () => {
 		const context = createMockExecuteContext({
 			parameters: {
 				resource: 'invoice',
 				operation: 'create',
-				source: 'direct',
 				templateId: 'tmpl_123',
+				clientId: '',
 			},
 			httpHandler: async (opts) => {
 				if (opts.url?.includes('/api/v1/templates/fields')) {
@@ -1071,7 +989,7 @@ describe('InvoicingBuilder Direct Input Create Invoice Workflow', () => {
 
 		await expect(node.execute.call(context)).rejects.toThrow(NodeOperationError);
 		await expect(node.execute.call(context)).rejects.toThrow(
-			'Client Name or ID is required for direct invoice creation. Please select a client.',
+			'Client Name or ID is required for invoice creation. Please select a client.',
 		);
 	});
 
